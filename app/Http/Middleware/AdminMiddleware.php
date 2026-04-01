@@ -9,21 +9,18 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AdminMiddleware
 {
-    /**
-     * Handle an incoming request.
-     *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
-     */
     public function handle(Request $request, Closure $next): Response
     {
-        if (session('emp_data')) {
-            $checkIfExists = DB::table('admin')
-                ->where('emp_id', session('emp_data')['emp_id'])
-                ->exists();
+        if (!session('emp_data')) {
+            return redirect('/');
+        }
 
-            if (!$checkIfExists) {
-                return redirect()->route('dashboard');
-            }
+        $exists = DB::connection('mysql')->table('admin')
+            ->where('emp_id', session('emp_data')['emp_id'])
+            ->exists();
+
+        if (!$exists) {
+            return redirect('/');
         }
 
         return $next($request);

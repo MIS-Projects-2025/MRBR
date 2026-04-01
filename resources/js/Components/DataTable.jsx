@@ -29,8 +29,8 @@ export default function DataTable({
 
     const themeColor =
         localStorage.getItem("theme") === "dark"
-            ? "hover:bg-gray-700"
-            : "hover:bg-gray-100";
+            ? "hover:bg-teal-600"
+            : "hover:bg-teal-100";
 
     const handleSearch = (e) => {
         e.preventDefault();
@@ -150,7 +150,7 @@ export default function DataTable({
                     <button
                         key={page}
                         className={`join-item btn btn-sm ${
-                            page === current ? "btn-primary" : ""
+                            page === current ? "bg-teal-600 text-white" : ""
                         }`}
                         onClick={() => {
                             const pageLink = meta.links.find(
@@ -176,7 +176,7 @@ export default function DataTable({
     };
 
     return (
-        <div className="w-full p-3 border border-gray-300 rounded-lg">
+        <div className="w-full p-3 border border-teal-300 rounded-lg">
             <form
                 onSubmit={dateRangeSearch ? handleDateFilter : handleSearch}
                 className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
@@ -192,10 +192,10 @@ export default function DataTable({
                             { preserveState: true }
                         );
                     }}
-                    className="select select-sm w-[100px] py-0"
+                    className="select select-sm w-[100px] py-0 border-teal-600 "
                 >
                     {[10, 25, 50, 100].map((num) => (
-                        <option key={num} value={num}>
+                        <option key={num} value={num} className="hover:bg-teal-600">
                             Show {num}
                         </option>
                     ))}
@@ -271,22 +271,9 @@ export default function DataTable({
                         />
                         <button
                             type="submit"
-                            className="px-2 btn btn-sm btn-primary"
+                            className="px-2 btn btn-sm bg-teal-600 text-white btn-outline"
                         >
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                strokeWidth="1.5"
-                                stroke="currentColor"
-                                className="size-4"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
-                                />
-                            </svg>
+                            <i className="fa-solid fa-magnifying-glass"></i>
                         </button>
                         {showExport && (
                             <button
@@ -393,7 +380,7 @@ export default function DataTable({
 
             {meta?.links?.length > 0 && (
                 <div className="flex flex-col gap-2 mt-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="text-sm text-gray-500">
+                    <div className="text-sm text-teal-600">
                         Showing {meta.from} to {meta.to} of {meta.total} results
                     </div>
                     {renderPaginationLinks()}

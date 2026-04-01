@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class AuthenticationController extends Controller
@@ -41,9 +42,27 @@ class AuthenticationController extends Controller
 
     public function logout(Request $request)
     {
-        session()->forget('emp_data');
-        session()->flush();
+        // Kunin emp_id bago mawala session
+        $empId = session('emp_data.emp_id') ?? null;
+
+        // Logout user
+        Auth::guard('web')->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+
+        if ($empId) {
+            DB::connection('mysql')->table('auth_sessions')
+                ->where('emp_id', $empId)
+                ->delete();
+        }
+
+        // cleanup sessions mga 30 minutes ang tagal ng login
+        DB::connection('mysql')->table('auth_sessions')
+            ->where('generated_at', '<', now()->subMinutes(30))
+            ->where('emp_id', $empId)
+            ->delete();
+
+
+        return redirect()->route('login');
     }
 }

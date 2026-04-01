@@ -1,13 +1,12 @@
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, router, usePage } from "@inertiajs/react";
 import { useState } from "react";
-import InputError from "@/Components/InputError";
-import InputLabel from "@/Components/InputLabel";
-import TextInput from "@/Components/TextInput";
+import { Key } from "lucide-react";
 
-export default function Profile({ profile, errors }) {
+export default function Profile({ profile, emp_data }) {
     const { props } = usePage();
-    const successMessage = props.flash?.success;
+    const { errors, flash } = props;
+    const successMessage = flash?.success;
 
     const [password, setPassword] = useState({
         current_password: "",
@@ -18,204 +17,147 @@ export default function Profile({ profile, errors }) {
     const [passwordForm, setPasswordForm] = useState(false);
 
     const handleChangePassword = () => {
-        router.post(
-            route("changePassword"),
-            { ...password },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    const token = localStorage.getItem("authify-token");
-                    localStorage.removeItem("authify-token");
-                    router.get(route("logout"));
-                    window.location.href = `http://192.168.2.221/authify/public/logout?key=${encodeURIComponent(
-                        token
-                    )}&redirect=${encodeURIComponent(route("dashboard"))}`;
-                },
-            }
-        );
+        router.post(route("changePassword"), password, {
+            preserveScroll: true,
+            onSuccess: () => {
+                router.get(route("logout"), {}, {
+                    onFinish: () => {
+                        window.location.href = route("login");
+                    },
+                });
+            },
+        });
     };
 
     return (
         <AuthenticatedLayout>
-            <Head title="Profile" />
+            <Head title="My Profile" />
 
-            <div className="max-w-3xl p-6 mx-auto border-[1px] rounded-2xl">
-                <h1 className="pb-2 mb-6 text-2xl font-bold border-b">
-                    User Profile
-                </h1>
-
-                {profile && (
-                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                        <ProfileField label="Name" value={profile.EMPNAME} />
-                        <ProfileField
-                            label="Position"
-                            value={profile.JOB_TITLE}
-                        />
-                        <ProfileField
-                            label="Department"
-                            value={profile.DEPARTMENT}
-                        />
-                        <ProfileField
-                            label="Production Line"
-                            value={profile.PRODLINE}
-                        />
-                        <ProfileField label="Station" value={profile.STATION} />
-                        <ProfileField label="Email" value={profile.EMAIL} />
-                        <div className="flex items-end gap-2">
-                            <ProfileField
-                                label="Password"
-                                value={[...Array(profile.PASSWRD?.length || 8)]
-                                    .map(() => "•")
-                                    .join("")}
-                            />
-                            <button
-                                className="border-blue-500 btn btn-sm border-[1px]"
-                                onClick={() => setPasswordForm(!passwordForm)}
-                            >
-                                {passwordForm ? "Cancel" : "Change Password"}
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Password Form - Toggled */}
-                <div className={passwordForm ? "block mt-6" : "hidden"}>
-                    <div className="p-4 space-y-4 border border-yellow-400 rounded-xl">
-                        <div
-                            role="alert"
-                            className="text-sm alert alert-warning"
-                        >
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="w-6 h-6 stroke-current shrink-0"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth="2"
-                                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            <div className="max-w-5xl mx-auto p-6 space-y-8">
+                {/* HEADER */}
+                <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-gray-500 via-neutral-500 to-gray-500 p-8 text-white shadow-xl">
+                    <div className="flex items-center gap-6">
+                        <div className="w-24 h-24 rounded-full bg-white/20 flex items-center justify-center text-3xl font-bold">
+                             <img
+                                    src={`http://192.168.3.201/Training/uploads/CerfificationPicture/${emp_data?.emp_id}.jpg`}
+                                    alt="profile"
+                                    className="w-24 h-24 rounded-full object-cover"
+                                    onError={(e) => {
+                                     e.target.src = "/default-avatar.png"; // fallback image
+                                    }}
                                 />
-                            </svg>
-                            <span>
-                                Changing your password will log you out of all
-                                systems using Authify.
-                            </span>
                         </div>
-
                         <div>
-                            <InputLabel
-                                htmlFor="old-password"
-                                value="Old Password"
-                            />
-                            <TextInput
-                                id="old-password"
-                                type="password"
-                                name="old-password"
-                                value={password.current_password}
-                                className="block w-full mt-1"
-                                onChange={(e) =>
-                                    setPassword({
-                                        ...password,
-                                        current_password: e.target.value,
-                                    })
-                                }
-                            />
-                            <InputError
-                                message={errors.current_password}
-                                className="mt-1"
-                            />
+                            <h1 className="text-3xl font-bold">
+                                {profile?.EMPNAME}
+                            </h1>
+                            <p className="text-white/80">
+                                {profile?.JOB_TITLE} • {profile?.DEPARTMENT}
+                            </p>
                         </div>
-
-                        <div>
-                            <InputLabel
-                                htmlFor="new-password"
-                                value="New Password"
-                            />
-                            <TextInput
-                                id="new-password"
-                                type="password"
-                                name="new-password"
-                                value={password.new_password}
-                                className="block w-full mt-1"
-                                onChange={(e) =>
-                                    setPassword({
-                                        ...password,
-                                        new_password: e.target.value,
-                                    })
-                                }
-                            />
-                            <InputError
-                                message={errors.new_password}
-                                className="mt-1"
-                            />
-                        </div>
-
-                        <div>
-                            <InputLabel
-                                htmlFor="confirm-new-password"
-                                value="Confirm New Password"
-                            />
-                            <TextInput
-                                id="confirm-new-password"
-                                type="password"
-                                name="confirm-new-password"
-                                value={password.new_password_confirmation}
-                                className="block w-full mt-1"
-                                onChange={(e) =>
-                                    setPassword({
-                                        ...password,
-                                        new_password_confirmation:
-                                            e.target.value,
-                                    })
-                                }
-                            />
-                            <InputError
-                                message={errors.new_password_confirmation}
-                                className="mt-1"
-                            />
-                        </div>
-
-                        <button
-                            className="w-full mt-2 btn btn-primary"
-                            onClick={handleChangePassword}
-                        >
-                            Change Password
-                        </button>
-
-                        {successMessage && (
-                            <div className="mt-2 text-white alert alert-success">
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="w-6 h-6 stroke-current shrink-0"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth="2"
-                                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                    />
-                                </svg>
-                                <span>{successMessage}</span>
-                            </div>
-                        )}
                     </div>
+                </div>
+
+                {/* INFO */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <InfoCard label="Production Line" value={profile?.PRODLINE} />
+                    <InfoCard label="Station" value={profile?.STATION} />
+                    <InfoCard label="Email Address" value={profile?.EMAIL} />
+                </div>
+
+                {/* SECURITY */}
+                <div className="rounded-3xl bg-white shadow-xl border p-6 space-y-6">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-xl font-bold">🔐 Security</h2>
+                        <button
+                            onClick={() => setPasswordForm(!passwordForm)}
+                            className={`px-4 py-2 rounded-lg font-semibold ${
+                                passwordForm
+                                    ? "bg-red-500 text-white"
+                                    : "bg-indigo-500 text-white"
+                            }`}
+                        >
+                            {passwordForm ? "Cancel" : "Change Password"}
+                        </button>
+                    </div>
+
+                    {passwordForm && (
+                        <div className="space-y-5">
+                            <PasswordInput
+                                label="Current Password"
+                                value={password.current_password}
+                                onChange={(v) =>
+                                    setPassword({ ...password, current_password: v })
+                                }
+                                error={errors.current_password}
+                            />
+
+                            <PasswordInput
+                                label="New Password"
+                                value={password.new_password}
+                                onChange={(v) =>
+                                    setPassword({ ...password, new_password: v })
+                                }
+                                error={errors.new_password}
+                            />
+
+                            <PasswordInput
+                                label="Confirm New Password"
+                                value={password.new_password_confirmation}
+                                onChange={(v) =>
+                                    setPassword({
+                                        ...password,
+                                        new_password_confirmation: v,
+                                    })
+                                }
+                                error={errors.new_password_confirmation}
+                            />
+
+                            <button
+                                onClick={handleChangePassword}
+                                className="w-full py-3 rounded-xl bg-gradient-to-r from-green-400 to-emerald-500 text-white font-bold flex items-center justify-center gap-2"
+                            >
+                                <Key size={20} />
+                                Update Password
+                            </button>
+
+                            {successMessage && (
+                                <div className="p-3 rounded-xl bg-green-100 text-green-800 font-semibold">
+                                    ✅ {successMessage}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
         </AuthenticatedLayout>
     );
 }
 
-function ProfileField({ label, value }) {
+/* ================== SMALL REUSABLE COMPONENTS ================== */
+
+function InfoCard({ label, value }) {
+    return (
+        <div className="p-4 rounded-2xl bg-white shadow border">
+            <div className="text-sm text-gray-500">{label}</div>
+            <div className="font-semibold text-gray-800">{value || "—"}</div>
+        </div>
+    );
+}
+
+function PasswordInput({ label, value, onChange, error }) {
     return (
         <div>
-            <label className="block text-sm font-medium text-gray-500">
-                {label}
-            </label>
-            <p className="mt-1 font-semibold">{value}</p>
+            <label className="block text-sm font-medium">{label}</label>
+            <input
+                type="password"
+                className="w-full mt-1 border rounded-lg p-2"
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+            />
+            {error && (
+                <div className="text-sm text-red-600 mt-1">{error}</div>
+            )}
         </div>
     );
 }
