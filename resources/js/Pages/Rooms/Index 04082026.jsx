@@ -2,122 +2,19 @@ import { useState } from "react";
 import Calendar from "@/Components/Calendar";
 import { router, Link } from "@inertiajs/react";
 import moment from "moment";
-import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 
-export default function Index({ rooms, reservations, emp_data }) {
+export default function Index({ rooms, reservations }) {
 
     const [selectedRoom, setSelectedRoom] = useState(null);
     const [selectedSlot, setSelectedSlot] = useState(null);
     const [activeTab, setActiveTab] = useState("today");
     const [selectedDate, setSelectedDate] = useState(
-        moment().format("YYYY-MM-DD")
-    );
-
-    const [cancelModal, setCancelModal] = useState(false);
-    const [selectedReservation, setSelectedReservation] = useState(null);
-
-    const [cancelData, setCancelData] = useState({
-        canceled_by: emp_data?.emp_name || "",
-        reason: "",
-    });
-
-    const canCancel = (res) => {
-    return (
-        ["superadmin", "admin"].includes(emp_data?.emp_role) ||
-        emp_data?.emp_name === res.guest_name
-    );
-};
-
-const openCancelModal = (res) => {
-    if (!canCancel(res)) {
-        alert("You are not allowed to cancel this reservation.");
-        return;
-    }
-
-    setSelectedReservation(res);
-    setCancelModal(true);
-};
-
-const handleEventDelete = (event) => {
-    const res = reservations.find(r => r.id === event.id);
-
-    if (!canCancel(res)) {
-        alert("Not allowed to cancel this reservation.");
-        return;
-    }
-
-    openCancelModal(res);
-};
-
-const submitCancel = () => {
-    if (!selectedReservation) return;
-
-    router.post("/reservations-cancel", {
-        reservation_id: selectedReservation.id,
-
-        room_id: selectedReservation.room_id,
-        guest_name: selectedReservation.guest_name,
-        event_type: selectedReservation.event_type,
-        start_date: selectedReservation.start_date,
-        start_time: selectedReservation.start_time,
-        end_date: selectedReservation.end_date,
-        end_time: selectedReservation.end_time,
-        receivers: selectedReservation.receivers,
-
-        canceled_by: cancelData.canceled_by,
-        reason: cancelData.reason,
-    }, {
-        onSuccess: () => {
-            setCancelModal(false);
-            setSelectedReservation(null);
-            setCancelData({
-                canceled_by: emp_data?.emp_name || "",
-                reason: "",
-            });
-        }
-    });
-};
-
-// ✅ ADDED: safe cancel status checker
-const isCancelable = (res) => {
-    if (!res) return false;
-
-   
-
-    return (
-       ["superadmin", "admin"].includes(emp_data?.emp_role) ||
-        emp_data?.emp_name === res.guest_name
-
-        
-    );
-};
-
-// ✅ ADDED: unified cancel trigger (optional cleaner usage)
-const triggerCancel = (event) => {
-    const res = reservations.find(r => r.id === event.id);
-
-    if (!isCancelable(res)) {
-        alert("Not allowed to cancel this reservation.");
-        return;
-    }
-
-    setSelectedReservation(res);
-    setCancelModal(true);
-};
-
-// ✅ ADDED: safe reset cancel state
-const resetCancelState = () => {
-    setCancelModal(false);
-    setSelectedReservation(null);
-    setCancelData({
-        canceled_by: emp_data?.emp_name || "",
-        reason: "",
-    });
-};
+    moment().format("YYYY-MM-DD")
+);
 
    const [data, setData] = useState({
     room_id: "",
-    guest_name: emp_data?.emp_name || "",
+    guest_name: "",
     event_type: "",
     start_date: "",
     start_time: "",
@@ -270,44 +167,18 @@ const handleSelectSlot = ({ start, end }) => {
         ? reservations.filter(r => r.room_id === selectedRoom.id)
         : [];
 
-        const getStatusColor = (res) => {
-    const now = moment();
-
-    const start = moment(`${res.start_date} ${res.start_time}`);
-    const end = moment(`${res.end_date} ${res.end_time}`);
-
-    // CANCELLED
-    if (res.status === "cancelled") {
-        return "bg-red-500";
-    }
-
-    // DONE
-    if (now.isAfter(end)) {
-        return "bg-green-500";
-    }
-
-    // ONGOING
-    if (now.isBetween(start, end)) {
-        return "bg-blue-500";
-    }
-
-    // PENDING / UPCOMING
-    return "bg-yellow-500";
-};
-
     return (
-         <AuthenticatedLayout>
-            <div className="min-h-screen bg-teal-50">
+        <div className="min-h-screen bg-gray-100">
 
             {/* NAV */}
-            {/* <nav className="bg-teal-600 px-4 py-4 flex justify-between">
+            <nav className="bg-teal-600 px-4 py-4 flex justify-between">
                 <div className="font-bold text-white text-2xl">
                     <i className="fab fa-pied-piper-alt text-3xl"></i> Meeting Room Reservation System
                 </div>
                 <Link href="/login" className="font-bold text-white">
                     <i className="fa-solid fa-arrow-right-from-bracket"></i> Login
                 </Link>
-            </nav> */}
+            </nav>
 
             {/* TABS */}
             <div className="p-4 flex gap-2 overflow-x-auto justify-between max-w-2xl mx-auto">
@@ -337,7 +208,7 @@ const handleSelectSlot = ({ start, end }) => {
     <div className="p-6 overflow-auto">
 
         {/* DATE FILTER */}
-        {/* <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-3 mb-4">
             <label className="font-semibold text-teal-600">
                 Select Date:
             </label>
@@ -348,7 +219,7 @@ const handleSelectSlot = ({ start, end }) => {
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="border-teal-600 px-3 py-2 rounded bg-white text-teal-600"
             />
-        </div> */}
+        </div>
 
         <div className="min-w-[1000px]">
 
@@ -503,35 +374,7 @@ const handleSelectSlot = ({ start, end }) => {
 return (
     <div
         key={res.id}
-        className={`absolute left-1 right-1 text-white rounded shadow z-20 flex flex-col items-center justify-center text-center overflow-hidden ${getStatusColor(res)}`}
-        onClick={() => {
-    if (!canCancel(res)) {
-
-        alert("You are not allowed to click this reservation.");
-        return;
-    }
-
-                    // ❌ BLOCK DONE
-                    if (res.status === "done") {
-                        alert("Cannot cancel completed reservation.");
-                        return;
-                    }
-
-                    // ❌ BLOCK CANCELLED
-                    if (res.status === "cancelled") {
-                        alert("Already cancelled.");
-                        return;
-                    }
-
-                     // ❌ BLOCK ONGOING
-                    if (res.status === "ongoing") {
-                        alert("Cannot cancel ongoing reservation.");
-                        return;
-                    }
-
-    setSelectedReservation(res);
-    setCancelModal(true);
-}}
+        className="absolute left-1 right-1 bg-teal-500 text-white rounded shadow z-20 flex flex-col items-center justify-center text-center overflow-hidden"
         style={{
             top: `${top}px`,
             height: `${height}px`,
@@ -548,12 +391,6 @@ return (
         {height > 50 && (
             <div className="leading-tight">
                 Event: <label className="font-bold ">{res.event_type}</label>
-            </div>
-        )}
-
-        {height > 50 && (
-            <div className="leading-tight">
-                <label className={`font-bold uppercase ${getStatusColor(res)}`}>{res.status}</label>
             </div>
         )}
     </div>
@@ -587,11 +424,9 @@ return (
                             src={`/rooms/${room.image}`}
                             className="h-40 w-full object-cover"
                         />
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm">
-  <div className="font-semibold text-teal-700">{room.name}</div>
-  <div className="text-gray-600">📍 {room.location}</div>
-  <div className="text-gray-600">👥 {room.capacity} attendees</div>
-</div>
+                        <div className="p-3 text-teal-600 font-semibold">
+                            {room.name} - {room.location} - Good for {room.capacity} attendees
+                        </div>
                     </button>
                 ))}
             </div>
@@ -604,10 +439,6 @@ return (
                     <h2 className="text-xl font-bold text-teal-600">
                         <i className="fa-brands fa-houzz mr-1"></i>{" "}
                         {selectedRoom.name}
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm">
-                            <div className="text-gray-600">📍 {selectedRoom.location}</div>
-                            <div className="text-gray-600">👥 {selectedRoom.capacity} attendees</div>
-                        </div>
                     </h2>
 
                     <button onClick={resetAll} className="text-teal-600">
@@ -617,12 +448,10 @@ return (
 
                 <Calendar
     reservations={filteredReservations}
-     onDeleteEvent={openCancelModal}
     onSelectSlot={handleSelectSlot}
     onEventDrop={handleEventDrop}
+    onDeleteEvent={handleDeleteEvent}
     modalOpen={!!selectedSlot}   // 🔥 IMPORTANT
-    emp_data={emp_data}
-
 />
             </div>
         )}
@@ -636,7 +465,7 @@ return (
                     <div className="bg-white p-6 rounded-xl w-full max-w-md">
 
                         <h2 className="font-bold text-teal-600 mb-3">
-                           <i className="fa-solid fa-calendar-plus"></i> New Reservation
+                            New Reservation
                         </h2>
 
     <p className="text-sm mb-3 text-gray-500">
@@ -655,88 +484,31 @@ return (
 
                             <input
                                 placeholder="Your Name"
-                                className="input cursor-not-allowed bg-gray-100"
-                                value={data.guest_name}
+                                className="input"
                                 onChange={(e) =>
                                     setData({ ...data, guest_name: e.target.value })
                                 }
-                                readOnly
                             />
 
                             <select
-    className="input"
-    value={data.event_type}
-    onChange={(e) =>
-        setData({ ...data, event_type: e.target.value })
-    }
->
-    <option value="">Select Event Type</option>
-
-    {/* CORE OFFICE EVENTS */}
-    <option>Meeting</option>
-    <option>Team Meeting</option>
-    <option>Department Meeting</option>
-    <option>Management Meeting</option>
-    <option>Client Meeting</option>
-    <option>Board Meeting</option>
-
-    {/* TRAINING / LEARNING */}
-    <option>Training</option>
-    <option>Workshop</option>
-    <option>Seminar</option>
-    <option>Webinar</option>
-    <option>Orientation</option>
-    <option>Onboarding Session</option>
-
-    {/* BUSINESS EVENTS */}
-    <option>Presentation</option>
-    <option>Project Kickoff</option>
-    <option>Project Review</option>
-    <option>Strategy Planning</option>
-    <option>Budget Meeting</option>
-    <option>Quarterly Review</option>
-
-    {/* HR / ADMIN */}
-    <option>Interview</option>
-    <option>Performance Review</option>
-    <option>Disciplinary Meeting</option>
-    <option>Policy Discussion</option>
-
-    {/* TECH / OPS */}
-    <option>System Demo</option>
-    <option>IT Support Session</option>
-    <option>System Maintenance Meeting</option>
-    <option>Incident Review</option>
-    <option>Dev Sprint Planning</option>
-    <option>Retrospective</option>
-
-    {/* EVENTS / OTHERS */}
-    <option>Company Announcement</option>
-    <option>Town Hall Meeting</option>
-    <option>General Assembly</option>
-    <option>Brainstorming Session</option>
-    <option>Networking</option>
-    <option>Other</option>
-</select>
+                                className="input"
+                                onChange={(e) =>
+                                    setData({ ...data, event_type: e.target.value })
+                                }
+                            >
+                                <option value="">Event Type</option>
+                                <option>Meeting</option>
+                                <option>Training</option>
+                                <option>Seminar</option>
+                            </select>
 
                             <input
-    placeholder="Receiver Emails (e.g. user1@mail.com, user2@mail.com)"
-    className="input"
-    value={data.receivers}
-    onChange={(e) => {
-        // normalize: remove extra spaces, keep comma-separated clean
-        const value = e.target.value;
-
-        setData({
-            ...data,
-            receivers: value
-                .split(",")
-                .map(email => email.trim())
-                .filter(Boolean)
-                .join(", ")
-        });
-    }}
-/>
+                                placeholder="Receiver Emails"
+                                className="input"
+                                onChange={(e) =>
+                                    setData({ ...data, receivers: e.target.value })
+                                }
+                            />
 
                             <textarea
                                 className="input h-24"
@@ -750,7 +522,7 @@ return (
                                 className="w-full bg-teal-600 text-white py-2 rounded"
                                 disabled={processing}
                             >
-                               <i className="fa-solid fa-save"></i> {processing ? "Saving..." : "Confirm"}
+                                {processing ? "Saving..." : "Confirm"}
                             </button>
                         </form>
 
@@ -758,78 +530,12 @@ return (
                             onClick={() => setSelectedSlot(null)}
                             className="mt-3 text-sm text-white bg-red-500 py-2 px-3 rounded"
                         >
-                           <i className="fa-solid fa-xmark"></i> Cancel
+                            Cancel
                         </button>
 
                     </div>
                 </div>
             )}
-
-            {cancelModal && (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-
-        <div className="bg-white w-full max-w-md p-6 rounded-xl space-y-3">
-
-            <h2 className="text-lg font-bold text-red-600">
-               <i className="fa-solid fa-cancel"></i> Cancel Reservation
-            </h2>
-
-            {/* DETAILS */}
-            <div className="text-sm bg-gray-50 p-3 rounded space-y-1">
-                <p><b>Room:</b> {rooms.find(r => r.id === selectedReservation?.room_id)?.name || "N/A"}</p>
-                <p><b>Guest:</b> {selectedReservation.guest_name}</p>
-                <p><b>Event:</b> {selectedReservation.event_type}</p>
-                <p>
-  <b>Schedule:</b>{" "}
-  {moment(selectedReservation.start_date).format("MMM D, YYYY")}{" "}
-  {moment(selectedReservation.start_time, "HH:mm").format("h:mm A")}
-  {" → "}
-  {moment(selectedReservation.end_date).format("MMM D, YYYY")}{" "}
-  {moment(selectedReservation.end_time, "HH:mm").format("h:mm A")}
-</p>
-            </div>
-
-            {/* CANCELED BY */}
-            <input
-                className="input cursor-not-allowed bg-gray-100"
-                value={cancelData.canceled_by}
-                onChange={(e) =>
-                    setCancelData({ ...cancelData, canceled_by: e.target.value })
-                }
-                placeholder="Canceled by"
-                readOnly
-            />
-
-            {/* REASON */}
-            <textarea
-                className="input h-24"
-                placeholder="Reason"
-                value={cancelData.reason}
-                onChange={(e) =>
-                    setCancelData({ ...cancelData, reason: e.target.value })
-                }
-            />
-
-            {/* ACTIONS */}
-            <div className="flex gap-2">
-                <button
-                    onClick={submitCancel}
-                    className="flex-1 bg-teal-600 text-white py-2 rounded"
-                >
-                   <i className="fa-solid fa-trash"></i> Confirm Cancel
-                </button>
-
-                <button
-                    onClick={() => setCancelModal(false)}
-                    className="flex-1 bg-red-500 text-white hover:bg-red-600 py-2 rounded"
-                >
-                   <i className="fa-solid fa-xmark"></i> Close
-                </button>
-            </div>
-
-        </div>
-    </div>
-)}
 
             <style>{`
                 .input {
@@ -840,15 +546,13 @@ return (
                 }
             `}</style>
 
-            {/* <footer className="fixed bottom-0 left-0 w-full text-center text-sm text-gray-500 py-2 border-t bg-teal-50">
+            <footer className="fixed bottom-0 left-0 w-full text-center text-sm text-gray-500 py-2 border-t bg-teal-50">
                 <div className="text-md font-semibold text-teal-500">© {new Date().getFullYear()} MRRS</div>
                 <div className="text-xs text-teal-500">
                     Developed by: Dharwines
                 </div>
-            </footer> */}
+            </footer>
 
         </div>
-        </AuthenticatedLayout>
     );
-    
 }

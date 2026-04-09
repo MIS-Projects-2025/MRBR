@@ -16,6 +16,7 @@ export default function RoomList({ tableData, tableFilters }) {
         name: "",
         location: "",
         description: "",
+        capacity: "",
         image: null,
         preview: null,
     });
@@ -47,6 +48,7 @@ const handleSubmit = (e) => {
     formData.append("name", form.name);
     formData.append("location", form.location);
     formData.append("description", form.description);
+    formData.append("capacity", form.capacity);
     if (form.image) formData.append("image", form.image);
 
     router.post(route("room.list.store"), formData, {
@@ -54,7 +56,7 @@ const handleSubmit = (e) => {
 
         onSuccess: () => {
             setShowModal(false);
-            setForm({ name: "", description: "", image: null, preview: null });
+            setForm({ name: "", location: "", description: "", capacity: "", image: null, preview: null });
 
             alert("✅ Room created successfully!");
         },
@@ -95,6 +97,7 @@ const handleDelete = (id) => {
             name: row.name,
             location: row.location,
             description: row.description,
+            capacity: row.capacity,
             image: null,
             preview: null,
         });
@@ -154,6 +157,7 @@ const handleDelete = (id) => {
                 columns={[
                     { key: "name", label: "Room Name" },
                     { key: "location", label: "Location" },
+                    { key: "capacity", label: "Capacity" },
                     { key: "description", label: "Description" },
                     { key: "actions", label: "Actions" },
                 ]}
@@ -210,6 +214,23 @@ const handleDelete = (id) => {
                     value={form.location}
                     onChange={handleChange}
                     placeholder="Enter Location"
+                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                />
+            </div>
+
+            {/* CAPACITY */}
+            <div>
+                <label className="flex items-center gap-2 mb-1 text-sm font-semibold text-gray-600">
+                    <i className="fa-solid fa-users text-teal-600"></i>
+                    Capacity
+                </label>
+
+                <input
+                    type="number"
+                    name="capacity"
+                    value={form.capacity}
+                    onChange={handleChange}
+                    placeholder="Enter Capacity"
                     className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
                 />
             </div>
@@ -295,6 +316,11 @@ const handleDelete = (id) => {
                 {selectedRow.location}
             </h2>
 
+            <h2 className="text-1xl font-bold text-gray-800">
+                <i className="mr-2 text-teal-600 fa-solid fa-users"></i>
+                {selectedRow.capacity} People Capacity
+            </h2>
+
             <p className="text-sm leading-relaxed text-gray-600">
                 {selectedRow.description}
             </p>
@@ -359,6 +385,22 @@ const handleDelete = (id) => {
                 <input
                     name="location"
                     value={form.location}
+                    onChange={handleChange}
+                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                />
+            </div>
+
+            {/* CAPACITY */}
+            <div>
+                <label className="flex items-center gap-2 mb-1 text-sm font-semibold text-gray-600">
+                    <i className="fa-solid fa-users text-teal-600"></i>
+                    Capacity
+                </label>
+
+                <input
+                    type="number"
+                    name="capacity"
+                    value={form.capacity}
                     onChange={handleChange}
                     className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
                 />

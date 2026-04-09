@@ -22,8 +22,9 @@ export default function ScheduleList({
         guest_name: "",
         event_type: "",
         room_id: "",
-        date: "",
+        start_date: "",
         start_time: "",
+        end_date: "",
         end_time: "",
         remarks: "",
     });
@@ -61,8 +62,9 @@ export default function ScheduleList({
             guest_name: row.guest_name,
             event_type: row.event_type,
             room_id: row.room_id,
-            date: row.date?.split("T")[0] ?? row.date,
+            start_date: row.start_date?.split("T")[0] ?? row.start_date,
             start_time: row.start_time,
+            end_date: row.end_date?.split("T")[0] ?? row.end_date,
             end_time: row.end_time,
             remarks: row.remarks,
         });
@@ -108,7 +110,8 @@ export default function ScheduleList({
     const tableDatasWithActions = tableData.data.map((row) => ({
         ...row,
         room_id: roomMap[row.room_id] ?? "Unknown Room",
-        date: dateFormat(row.date),
+        start_date: dateFormat(row.start_date),
+        end_date: dateFormat(row.end_date),
 
         actions: (
             <div className="flex gap-2">
@@ -154,8 +157,9 @@ export default function ScheduleList({
                     { key: "room_id", label: "Room" },
                     { key: "guest_name", label: "Name" },
                     { key: "event_type", label: "Event" },
-                    { key: "date", label: "Date" },
+                    { key: "start_date", label: "Start Date" },
                     { key: "start_time", label: "Time Start" },
+                    { key: "end_date", label: "End Date" },
                     { key: "end_time", label: "Time End" },
                     { key: "remarks", label: "Remarks" },
                     { key: "actions", label: "Action" },
@@ -181,7 +185,8 @@ export default function ScheduleList({
                         <div className="p-5 text-sm space-y-3">
                             <p><b>Name:</b> {selectedRow.guest_name}</p>
                             <p><b>Room:</b> {roomName}</p>
-                            <p><b>Date:</b> {dateFormat(selectedRow.date)}</p>
+                            <p><b>Start Date:</b> {dateFormat(selectedRow.start_date)}</p>
+                            <p><b>End Date:</b> {dateFormat(selectedRow.end_date)}</p>
                             <p><b>Time:</b> {selectedRow.start_time} - {selectedRow.end_time}</p>
                             <p><b>Remarks:</b> {selectedRow.remarks}</p>
                         </div>
@@ -209,30 +214,116 @@ export default function ScheduleList({
                             <h2 className="font-semibold">Edit Reservation</h2>
                         </div>
 
-                        <div className="p-5 space-y-4 text-sm">
+                       <div className="p-5 space-y-4 text-sm">
+  {/* Event */}
+  <div className="flex flex-col">
+    <label className="font-semibold mb-1">Event</label>
+    <input
+      name="event_type"
+      value={editForm.event_type}
+      onChange={handleEditChange}
+      className="border rounded-lg p-2 w-full"
+    />
+  </div>
 
-                            <input name="event_type" value={editForm.event_type} onChange={handleEditChange} className="border rounded-lg p-2 w-full" />
+  {/* Organizer */}
+  <div className="flex flex-col">
+    <label className="font-semibold mb-1">Organizer</label>
+    <input
+      name="guest_name"
+      value={editForm.guest_name}
+      onChange={handleEditChange}
+      className="border rounded-lg p-2 w-full"
+    />
+  </div>
 
-                            <input name="guest_name" value={editForm.guest_name} onChange={handleEditChange} className="border rounded-lg p-2 w-full" />
+  {/* Room */}
+  <div className="flex flex-col">
+    <label className="font-semibold mb-1">Room</label>
+    <select
+      name="room_id"
+      value={editForm.room_id}
+      onChange={handleEditChange}
+      className="border rounded-lg p-2 w-full"
+    >
+      {roomList.map((room) => (
+        <option key={room.id} value={room.id}>
+          {room.name}
+        </option>
+      ))}
+    </select>
+  </div>
 
-                            <select name="room_id" value={editForm.room_id} onChange={handleEditChange} className="border rounded-lg p-2 w-full">
-                                {roomList.map((room) => (
-                                    <option key={room.id} value={room.id}>{room.name}</option>
-                                ))}
-                            </select>
+  {/* Start Date & Time */}
+  <div className="grid grid-cols-2 gap-2">
+    <div className="flex flex-col">
+      <label className="font-semibold mb-1">Start Date</label>
+      <input
+        type="date"
+        name="start_date"
+        value={editForm.start_date}
+        onChange={handleEditChange}
+        className="border rounded-lg p-2 w-full"
+      />
+    </div>
 
-                            <input type="date" name="date" value={editForm.date} onChange={handleEditChange} className="border rounded-lg p-2 w-full" />
+    <div className="flex flex-col">
+      <label className="font-semibold mb-1">Start Time</label>
+      <input
+        type="time"
+        name="start_time"
+        value={editForm.start_time}
+        onChange={handleEditChange}
+        className="border rounded-lg p-2 w-full"
+      />
+    </div>
+  </div>
 
-                            <input type="time" name="start_time" value={editForm.start_time} onChange={handleEditChange} className="border rounded-lg p-2 w-full" />
+  {/* End Date & Time */}
+  <div className="grid grid-cols-2 gap-2">
+    <div className="flex flex-col">
+      <label className="font-semibold mb-1">End Date</label>
+      <input
+        type="date"
+        name="end_date"
+        value={editForm.end_date}
+        onChange={handleEditChange}
+        className="border rounded-lg p-2 w-full"
+      />
+    </div>
 
-                            <input type="time" name="end_time" value={editForm.end_time} onChange={handleEditChange} className="border rounded-lg p-2 w-full" />
+    <div className="flex flex-col">
+      <label className="font-semibold mb-1">End Time</label>
+      <input
+        type="time"
+        name="end_time"
+        value={editForm.end_time}
+        onChange={handleEditChange}
+        className="border rounded-lg p-2 w-full"
+      />
+    </div>
+  </div>
 
-                            <textarea name="remarks" value={editForm.remarks} onChange={handleEditChange} className="border rounded-lg p-2 w-full" />
+  {/* Remarks */}
+  <div className="flex flex-col">
+    <label className="font-semibold mb-1">Remarks</label>
+    <textarea
+      name="remarks"
+      value={editForm.remarks}
+      onChange={handleEditChange}
+      className="border rounded-lg p-2 w-full"
+      rows={3}
+    />
+  </div>
 
-                            <button onClick={handleEditSubmit} className="w-full bg-teal-600 text-white py-2 rounded-lg">
-                                Save Changes
-                            </button>
-                        </div>
+  {/* Submit */}
+  <button
+    onClick={handleEditSubmit}
+    className="w-full bg-teal-600 hover:bg-teal-700 text-white py-2 rounded-lg transition"
+  >
+    Save Changes
+  </button>
+</div>
 
                         <div className="px-4 py-3 bg-teal-50">
                             <button onClick={() => setEditOpen(false)} className="w-full bg-red-500 text-white py-2 rounded-lg">

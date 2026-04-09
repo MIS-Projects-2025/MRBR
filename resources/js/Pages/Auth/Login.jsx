@@ -1,4 +1,5 @@
 import { useForm, Head, Link } from "@inertiajs/react";
+import { useState } from "react";
 import InputError from "@/Components/InputError";
 
 export default function Login({ redirect }) {
@@ -7,6 +8,8 @@ export default function Login({ redirect }) {
         password: "",
     });
 
+    const [showPassword, setShowPassword] = useState(false);
+
     const submit = (e) => {
         e.preventDefault();
         post(route("login"));
@@ -14,18 +17,26 @@ export default function Login({ redirect }) {
 
     return (
         <>
-            <Head title="Admin Login" />
+            <Head title="Login" />
 
-            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-100 via-gray-50 to-gray-200 p-4">
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-100 via-white to-gray-200 p-4">
 
-                {/* LOGIN CARD */}
-                <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+                {/* CARD */}
+                <div className="w-full max-w-md backdrop-blur-lg bg-white/80 border border-white/40 shadow-2xl rounded-3xl overflow-hidden">
 
                     {/* HEADER */}
-                    <div className="bg-teal-600 text-white p-6 text-center">
-                        <i className="fa-solid fa-user-shield text-3xl mb-2"></i>
-                        <h1 className="text-2xl font-bold">Admin Login</h1>
-                        <p className="text-white/80 text-sm">
+                    <div className="bg-gradient-to-r from-teal-600 to-teal-500 text-white p-6 text-center">
+                        <div className="flex justify-center mb-2">
+                            <div className="bg-white/20 p-3 rounded-full">
+                                <i className="fa-solid fa-calendar-check text-2xl"></i>
+                            </div>
+                        </div>
+
+                        <h1 className="text-2xl font-bold">
+                            Welcome Back 👋
+                        </h1>
+
+                        <p className="text-sm text-white/80 mt-1">
                             Meeting Room Reservation System
                         </p>
                     </div>
@@ -33,73 +44,101 @@ export default function Login({ redirect }) {
                     {/* FORM */}
                     <div className="p-6 space-y-5">
 
-                        <InputError
-                            message={errors.general}
-                            className="p-2 text-center bg-red-100 text-red-600 rounded"
-                        />
+                        {/* GENERAL ERROR */}
+                        {errors.general && (
+                            <div className="p-3 text-sm text-red-600 bg-red-100 rounded-lg text-center">
+                                {errors.general}
+                            </div>
+                        )}
 
                         <form onSubmit={submit} className="space-y-4">
 
-                            <input
-                                type="hidden"
-                                name="redirect"
-                                value={redirect}
-                            />
+                            <input type="hidden" name="redirect" value={redirect} />
 
                             {/* Employee ID */}
-                            <div>
-                                <label className="text-sm text-gray-600">
-                                   <i className="fa-solid fa-id-card mr-1"></i> Employee ID
+                            <div className="relative">
+                                <label className="text-xs text-gray-500">
+                                    Employee ID
                                 </label>
-                                <input
-                                    type="text"
-                                    value={data.employeeID}
-                                    onChange={(e) =>
-                                        setData("employeeID", e.target.value)
-                                    }
-                                    className="w-full mt-1 p-3 border rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-gray-600"
-                                    placeholder="Enter Employee ID"
-                                />
+
+                                <div className="relative">
+                                    <i className="fa-solid fa-id-card absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+
+                                    <input
+                                        type="text"
+                                        value={data.employeeID}
+                                        onChange={(e) =>
+                                            setData("employeeID", e.target.value)
+                                        }
+                                        className="w-full pl-10 pr-3 py-3 border rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-teal-700 outline-none transition"
+                                        placeholder="Enter your ID"
+                                    />
+                                </div>
+
                                 <InputError message={errors.employeeID} />
                             </div>
 
                             {/* Password */}
-                            <div>
-                                <label className="text-sm text-gray-600">
-                                   <i className="fa-solid fa-lock mr-1"></i> Password
+                            <div className="relative">
+                                <label className="text-xs text-gray-500">
+                                    Password
                                 </label>
-                                <input
-                                    type="password"
-                                    value={data.password}
-                                    onChange={(e) =>
-                                        setData("password", e.target.value)
-                                    }
-                                    className="w-full mt-1 p-3 border rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-gray-600"
-                                    placeholder="Enter Password"
-                                />
+
+                                <div className="relative">
+                                    <i className="fa-solid fa-lock absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        value={data.password}
+                                        onChange={(e) =>
+                                            setData("password", e.target.value)
+                                        }
+                                        className="w-full pl-10 pr-10 py-3 border rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-teal-700 outline-none transition"
+                                        placeholder="Enter your password"
+                                    />
+
+                                    {/* TOGGLE */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-teal-600"
+                                    >
+                                        <i className={`fa-solid ${showPassword ? "fa-eye-slash" : "fa-eye"}`}></i>
+                                    </button>
+                                </div>
+
                                 <InputError message={errors.password} />
                             </div>
 
-                            {/* LOGIN BUTTON */}
+                            {/* BUTTON */}
                             <button
                                 type="submit"
                                 disabled={processing}
-                                className="w-full bg-teal-600 text-white py-3 rounded-lg font-semibold hover:bg-teal-700 transition disabled:opacity-50"
+                                className="w-full flex items-center justify-center gap-2 bg-teal-600 text-white py-3 rounded-xl font-semibold hover:bg-teal-700 transition-all duration-200 active:scale-95 disabled:opacity-50"
                             >
-                                <i className="fa-solid fa-right-to-bracket mr-2"></i>
-                                {processing ? "Logging in..." : "Login"}
+                                {processing ? (
+                                    <>
+                                        <i className="fa-solid fa-spinner animate-spin"></i>
+                                        Logging in...
+                                    </>
+                                ) : (
+                                    <>
+                                        <i className="fa-solid fa-right-to-bracket"></i>
+                                        Login
+                                    </>
+                                )}
                             </button>
-
                         </form>
 
-                        {/* BACK BUTTON */}
-                        <Link
-                            href="/rooms/list"
-                            className="block text-center mt-4 text-sm text-gray-500 hover:text-teal-600 transition"
-                        >
-                            ← Back to Rooms
-                        </Link>
-
+                        {/* FOOTER */}
+                        {/* <div className="text-center text-sm text-gray-500">
+                            <Link
+                                href="/rooms/list"
+                                className="hover:text-teal-600 transition"
+                            >
+                                ← Go to Meeting Schedule
+                            </Link>
+                        </div> */}
                     </div>
                 </div>
             </div>

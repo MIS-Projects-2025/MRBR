@@ -16,6 +16,14 @@ export default function NavLinks() {
             />
 
             <SidebarLink
+                href={route("rooms.index")}
+                label="Reservation Schedule"
+                icon={<i className="fa-solid fa-people-roof"></i>}
+            />
+
+         {["superadmin", "admin"].includes(emp_data?.emp_role) && (
+            <div>
+            <SidebarLink
                 href={route("schedule.list.index")}
                 label="Reservations"
                 icon={<i className="fa-solid fa-book"></i>}
@@ -26,6 +34,8 @@ export default function NavLinks() {
                 label="Room List"
                 icon={<i className="fa-solid fa-people-roof"></i>}
             />
+            </div>
+            )}
             
             
 

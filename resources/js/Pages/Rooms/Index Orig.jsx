@@ -420,8 +420,11 @@ const endTimeOptions = generateEndTimes();
             )}
 
             {/* FOOTER */}
-            <footer className="text-center text-sm text-gray-500 py-6 border-t mt-60">
-                © {new Date().getFullYear()} Room Booking System
+            <footer className="fixed bottom-0 left-0 w-full text-center text-sm text-gray-500 py-2 border-t bg-teal-50">
+                <div className="text-md font-semibold text-teal-500">© {new Date().getFullYear()} MRRS</div>
+                <div className="text-xs text-teal-500">
+                    Developed by: Dharwines
+                </div>
             </footer>
 
             <style>{`

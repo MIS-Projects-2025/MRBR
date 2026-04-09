@@ -49,11 +49,11 @@ class AuthenticatedSessionController extends Controller
             ->where('emp_id', $currentUser->EMPLOYID)
             ->first();
 
-        if (!$isAdmin) {
-            return back()->withErrors([
-                'general' => 'Admin access only.'
-            ]);
-        }
+        // if (!$isAdmin) {
+        //     return back()->withErrors([
+        //         'general' => 'Admin access only.'
+        //     ]);
+        // }
 
         // 🔑 Generate token
         $token = Str::random(40);
@@ -75,7 +75,7 @@ class AuthenticatedSessionController extends Controller
             'login_ip' => $clientIp,
             'login_hostname' => $clientHostname,
             'user_agent' => $request->userAgent(),
-            'system' => 'OEE Portal System',
+            'system' => 'Meeting Room Reservation System',
             'generated_at' => now(),
         ]);
 

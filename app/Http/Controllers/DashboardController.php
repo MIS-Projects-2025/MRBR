@@ -14,45 +14,39 @@ class DashboardController extends Controller
         $now = Carbon::now();
         $today = Carbon::today();
 
-        // 🔄 UPDATE STATUS FIRST (IMPORTANT)
-        DB::connection('mysql')->table('reservations')
-            ->update(['status' => 'pending']); // reset all first
+        // =========================
+        // UPDATE STATUS (FIXED)
+        // =========================
 
-        // ✅ DONE (past reservations)
         DB::connection('mysql')->table('reservations')
-            ->whereRaw("CONCAT(date, ' ', end_time) < ?", [$now])
-            ->update(['status' => 'done']);
-
-        // 🔴 ONGOING (current time)
-        DB::connection('mysql')->table('reservations')
-            ->whereRaw("CONCAT(date, ' ', start_time) <= ?", [$now])
-            ->whereRaw("CONCAT(date, ' ', end_time) >= ?", [$now])
-            ->update(['status' => 'ongoing']);
-
-        // 🟢 PENDING (future)
-        DB::connection('mysql')->table('reservations')
-            ->whereRaw("CONCAT(date, ' ', start_time) > ?", [$now])
-            ->update(['status' => 'pending']);
+            ->update([
+                'status' => DB::raw("
+                CASE
+                    WHEN CONCAT(end_date, ' ', end_time) < '{$now}' THEN 'done'
+                    WHEN CONCAT(start_date, ' ', start_time) <= '{$now}'
+                         AND CONCAT(end_date, ' ', end_time) >= '{$now}' THEN 'ongoing'
+                    ELSE 'pending'
+                END
+            ")
+            ]);
 
         // =========================
-        // DASHBOARD DATA AFTER UPDATE
+        // DASHBOARD DATA
         // =========================
 
         $bookingsToday = DB::connection('mysql')->table('reservations')
-            ->whereDate('date', $today)
+            ->whereDate('start_date', $today)
             ->count();
 
         $ongoing = DB::connection('mysql')->table('reservations')
             ->where('status', 'ongoing')
             ->count();
 
-        $availableRooms = DB::connection('mysql')->table('rooms')
-
-            ->count();
+        $availableRooms = DB::connection('mysql')->table('rooms')->count();
 
         $todayReservations = DB::connection('mysql')->table('reservations')
             ->join('rooms', 'rooms.id', '=', 'reservations.room_id')
-            ->whereDate('reservations.date', $today)
+            ->whereDate('reservations.start_date', $today)
             ->select(
                 'rooms.name as room_name',
                 'rooms.image',
@@ -62,18 +56,16 @@ class DashboardController extends Controller
             ->get();
 
         $bookingsPerDate = DB::connection('mysql')->table('reservations')
-            ->select('date', DB::raw('COUNT(*) as total'))
-            ->groupBy('date')
-            ->orderBy('date')
+            ->select('start_date as date', DB::raw('COUNT(*) as total'))
+            ->groupBy('start_date')
+            ->orderBy('start_date')
             ->get();
-
 
         return Inertia::render('Dashboard', [
             'stats' => [
                 'bookingsToday' => $bookingsToday,
                 'ongoing' => $ongoing,
                 'availableRooms' => $availableRooms,
-
             ],
             'todayReservations' => $todayReservations,
             'bookingsPerDate' => $bookingsPerDate

@@ -16,6 +16,10 @@ class RoomController extends Controller
 
 
 
+        // dd($empData, $empRole);
+
+
+
         $rooms = DB::table('rooms')->get();
 
         $reservations = DB::table('reservations')->get();
@@ -64,8 +68,9 @@ class RoomController extends Controller
             'room_id' => 'required',
             'guest_name' => 'required',
             'event_type' => 'required',
-            'date' => 'required',
+            'start_date' => 'required',
             'start_time' => 'required',
+            'end_date' => 'required',
             'end_time' => 'required',
             'receivers' => 'required',
         ]);
@@ -73,20 +78,21 @@ class RoomController extends Controller
         // 🔥 CHECK OVERLAP
         $conflict = DB::table('reservations')
             ->where('room_id', $request->room_id)
-            ->where('date', $request->date)
             ->where(function ($q) use ($request) {
-                $q->whereBetween('start_time', [$request->start_time, $request->end_time])
-                    ->orWhereBetween('end_time', [$request->start_time, $request->end_time])
-                    ->orWhere(function ($q2) use ($request) {
-                        $q2->where('start_time', '<=', $request->start_time)
-                            ->where('end_time', '>=', $request->end_time);
-                    });
+
+                $newStart = $request->start_date . ' ' . $request->start_time;
+                $newEnd   = $request->end_date . ' ' . $request->end_time;
+
+                $q->whereRaw("
+            CONCAT(start_date, ' ', start_time) < ?
+            AND CONCAT(end_date, ' ', end_time) > ?
+        ", [$newEnd, $newStart]);
             })
             ->exists();
 
         if ($conflict) {
             return back()->withErrors([
-                'error' => 'Time slot not available'
+                'error' => 'slot not available'
             ]);
         }
 
@@ -95,9 +101,11 @@ class RoomController extends Controller
             'room_id' => $request->room_id,
             'guest_name' => $request->guest_name,
             'event_type' => $request->event_type,
-            'date' => $request->date,
+            'start_date' => $request->start_date,
             'start_time' => $request->start_time,
+            'end_date' => $request->end_date,
             'end_time' => $request->end_time,
+            'receivers' => $request->receivers,
             'remarks' => $request->remarks,
             'created_at' => now(),
             'updated_at' => now(),
@@ -119,34 +127,46 @@ class RoomController extends Controller
 
     private function buildEmailMessage($request, $participants)
     {
-        // 🔥 GET ROOM DETAILS
         $room = DB::table('rooms')
             ->where('id', $request->room_id)
             ->first();
 
-        $roomDisplay = $room
-            ? "{$room->name} - {$room->location}"
-            : "Unknown Room";
+        $roomName = $room->name ?? "Unknown Room";
+        $roomLocation = $room->location ?? "Unknown Location";
 
-        // 🔥 FORMAT DATE PROPERLY
-        $formattedDate = Carbon::parse($request->date)
-            ->format('l, F j Y');
+        $start = Carbon::parse($request->start_date . ' ' . $request->start_time);
+        $end   = Carbon::parse($request->end_date . ' ' . $request->end_time);
+
+        $startFormatted = $start->format('l, F j Y g:i A');
+        $endFormatted   = $end->format('l, F j Y g:i A');
+
+        if ($start->isSameDay($end)) {
+            $dateDisplay = $start->format('l, F j Y');
+            $timeDisplay = $start->format('g:i A') . ' - ' . $end->format('g:i A');
+        } else {
+            $dateDisplay = $startFormatted . ' → ' . $endFormatted;
+            $timeDisplay = '';
+        }
 
         return "
-📅 MEETING INVITATION
+📅 {$request->event_type}
 
-Event: {$request->event_type}
-Room: {$roomDisplay}
-Date: {$formattedDate}
-Time: {$request->start_time} - {$request->end_time}
+👤 Organizer: {$request->guest_name}
+
+🏢 Room: {$roomName}
+📍 Location: {$roomLocation}
+
+📆 Schedule:
+{$dateDisplay}
+" . ($timeDisplay ? "⏰ {$timeDisplay}" : "") . "
 
 👥 Participants:
-" . implode(", ", $participants) . "
+" . implode(', ', $participants) . "
 
-Remarks:
+📝 Remarks:
 {$request->remarks}
 
-This is an automated notification from Meeting Room System.
+— Meeting Room Reservation System
 ";
     }
 

@@ -35,7 +35,7 @@ class ScheduleListController extends Controller
                         ->orderBy('created_at', 'desc');
                 },
 
-                'searchColumns' => ['room_id', 'guest_name', 'event_type', 'date', 'start_time', 'end_time', 'remarks'],
+                'searchColumns' => ['room_id', 'guest_name', 'event_type', 'start_date', 'start_time', 'end_date', 'end_time', 'remarks'],
             ]
         );
 
@@ -66,8 +66,9 @@ class ScheduleListController extends Controller
             'guest_name' => 'required|string|max:255',
             'event_type' => 'required|string|max:255',
             'room_id' => 'required|exists:rooms,id',
-            'date' => 'required|date',
+            'start_date' => 'required|date',
             'start_time' => 'required',
+            'end_date' => 'required|date',
             'end_time' => 'required',
             'remarks' => 'nullable|string',
         ]);
@@ -78,8 +79,9 @@ class ScheduleListController extends Controller
                 'guest_name' => $validated['guest_name'],
                 'event_type' => $validated['event_type'],
                 'room_id' => $validated['room_id'],
-                'date' => $validated['date'],
+                'start_date' => $validated['start_date'],
                 'start_time' => $validated['start_time'],
+                'end_date' => $validated['end_date'],
                 'end_time' => $validated['end_time'],
                 'remarks' => $validated['remarks'],
                 'updated_at' => now(),

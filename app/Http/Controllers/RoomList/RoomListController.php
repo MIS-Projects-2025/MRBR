@@ -168,4 +168,32 @@ class RoomListController extends Controller
 
         return redirect()->back()->with('success', 'Room deleted successfully.');
     }
+
+    public function cancel(Request $request)
+    {
+        DB::table('reservation_history')->insert([
+            'reservation_id' => $request->reservation_id,
+            'room_id' => $request->room_id,
+            'guest_name' => $request->guest_name,
+            'event_type' => $request->event_type,
+            'start_date' => $request->start_date,
+            'start_time' => $request->start_time,
+            'end_date' => $request->end_date,
+            'end_time' => $request->end_time,
+            'receivers' => $request->receivers,
+
+            'canceled_by' => $request->canceled_by,
+            'reason' => $request->reason,
+
+            'created_at' => now(),
+        ]);
+
+        DB::table('reservations')
+            ->where('id', $request->reservation_id)
+            ->update([
+                'status' => 'canceled'
+            ]);
+
+        return back()->with('success', 'Reservation canceled successfully.');
+    }
 }
