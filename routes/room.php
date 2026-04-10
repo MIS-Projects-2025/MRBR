@@ -1,9 +1,11 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\ReservationController;
 use App\Http\Middleware\AuthMiddleware;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -38,3 +40,9 @@ Route::post('/reservations-store', [RoomController::class, 'store']);
 Route::delete('/reservations-delete/{id}', [RoomController::class, 'destroy']);
 
 Route::post('/reservations-cancel', [ReservationController::class, 'cancel']);
+
+Route::post('/reservations-update/{id}', [ReservationController::class, 'updateDate']);
+
+Route::get('/maintenance', function () {
+  return Inertia::render('maintenance');
+})->name('maintenance');

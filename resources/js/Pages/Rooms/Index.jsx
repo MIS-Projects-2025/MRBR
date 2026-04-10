@@ -3,8 +3,12 @@ import Calendar from "@/Components/Calendar";
 import { router, Link } from "@inertiajs/react";
 import moment from "moment";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
+import { Select } from "antd";
+
 
 export default function Index({ rooms, reservations, emp_data }) {
+
+    const { Option } = Select;
 
     const [selectedRoom, setSelectedRoom] = useState(null);
     const [selectedSlot, setSelectedSlot] = useState(null);
@@ -189,10 +193,30 @@ const handleSelectSlot = ({ start, end }) => {
 }));
 };
 
-    const handleEventDrop = ({ event, start, end }) => {
+const handleEventDrop = ({ id, start, end }) => {
 
+    const current = reservations.find(r => r.id == id);
+    if (!current) return;
+
+    const now = moment();
+    const resStart = moment(`${current.start_date} ${current.start_time}`);
+    const resEnd = moment(`${current.end_date} ${current.end_time}`);
+
+    // 🔥 BLOCK DONE
+    if (now.isAfter(resEnd)) {
+        alert("Cannot modify completed reservation.");
+        return;
+    }
+
+    // 🔥 BLOCK ONGOING
+    if (now.isBetween(resStart, resEnd)) {
+        alert("Cannot modify ongoing reservation.");
+        return;
+    }
+
+    // 🔥 CONFLICT CHECK
     const conflict = reservations.some(r => {
-        if (r.id === event.id || r.room_id !== selectedRoom.id) return false;
+        if (r.id == id || r.room_id !== current.room_id) return false;
 
         const rStart = new Date(`${r.start_date}T${r.start_time}`);
         const rEnd = new Date(`${r.end_date}T${r.end_time}`);
@@ -205,7 +229,8 @@ const handleSelectSlot = ({ start, end }) => {
         return;
     }
 
-    router.post(`/reservations-update/${event.id}`, {
+    // ✅ SAVE
+    router.post(`/reservations-update/${id}`, {
         start_date: moment(start).format("YYYY-MM-DD"),
         start_time: moment(start).format("HH:mm"),
         end_date: moment(end).format("YYYY-MM-DD"),
@@ -276,8 +301,8 @@ const handleSelectSlot = ({ start, end }) => {
     const start = moment(`${res.start_date} ${res.start_time}`);
     const end = moment(`${res.end_date} ${res.end_time}`);
 
-    // CANCELLED
-    if (res.status === "cancelled") {
+    // canceled
+    if (res.status === "canceled") {
         return "bg-red-500";
     }
 
@@ -294,6 +319,8 @@ const handleSelectSlot = ({ start, end }) => {
     // PENDING / UPCOMING
     return "bg-yellow-500";
 };
+
+
 
     return (
          <AuthenticatedLayout>
@@ -517,9 +544,9 @@ return (
                         return;
                     }
 
-                    // ❌ BLOCK CANCELLED
-                    if (res.status === "cancelled") {
-                        alert("Already cancelled.");
+                    // ❌ BLOCK canceled
+                    if (res.status === "canceled") {
+                        alert("Already canceled.");
                         return;
                     }
 
@@ -663,61 +690,68 @@ return (
                                 readOnly
                             />
 
-                            <select
-    className="input"
-    value={data.event_type}
-    onChange={(e) =>
-        setData({ ...data, event_type: e.target.value })
+<Select
+    showSearch
+    placeholder="Select Event Type"
+    value={data.event_type || undefined}
+    onChange={(value) =>
+        setData({ ...data, event_type: value })
     }
+    optionFilterProp="children"
+    filterOption={(input, option) =>
+        (option?.children ?? "")
+            .toLowerCase()
+            .includes(input.toLowerCase())
+    }
+    className="w-full"
 >
-    <option value="">Select Event Type</option>
-
     {/* CORE OFFICE EVENTS */}
-    <option>Meeting</option>
-    <option>Team Meeting</option>
-    <option>Department Meeting</option>
-    <option>Management Meeting</option>
-    <option>Client Meeting</option>
-    <option>Board Meeting</option>
+    <Option value="Meeting">Meeting</Option>
+    <Option value="Team Meeting">Team Meeting</Option>
+    <Option value="Department Meeting">Department Meeting</Option>
+    <Option value="Management Meeting">Management Meeting</Option>
+    <Option value="Client Meeting">Client Meeting</Option>
+    <Option value="Board Meeting">Board Meeting</Option>
+    <Option value="Corporate Meeting">Corporate Meeting</Option>
 
     {/* TRAINING / LEARNING */}
-    <option>Training</option>
-    <option>Workshop</option>
-    <option>Seminar</option>
-    <option>Webinar</option>
-    <option>Orientation</option>
-    <option>Onboarding Session</option>
+    <Option value="Training">Training</Option>
+    <Option value="Workshop">Workshop</Option>
+    <Option value="Seminar">Seminar</Option>
+    <Option value="Webinar">Webinar</Option>
+    <Option value="Orientation">Orientation</Option>
+    <Option value="Onboarding Session">Onboarding Session</Option>
 
     {/* BUSINESS EVENTS */}
-    <option>Presentation</option>
-    <option>Project Kickoff</option>
-    <option>Project Review</option>
-    <option>Strategy Planning</option>
-    <option>Budget Meeting</option>
-    <option>Quarterly Review</option>
+    <Option value="Presentation">Presentation</Option>
+    <Option value="Project Kickoff">Project Kickoff</Option>
+    <Option value="Project Review">Project Review</Option>
+    <Option value="Strategy Planning">Strategy Planning</Option>
+    <Option value="Budget Meeting">Budget Meeting</Option>
+    <Option value="Quarterly Review">Quarterly Review</Option>
 
     {/* HR / ADMIN */}
-    <option>Interview</option>
-    <option>Performance Review</option>
-    <option>Disciplinary Meeting</option>
-    <option>Policy Discussion</option>
+    <Option value="Interview">Interview</Option>
+    <Option value="Performance Review">Performance Review</Option>
+    <Option value="Disciplinary Meeting">Disciplinary Meeting</Option>
+    <Option value="Policy Discussion">Policy Discussion</Option>
 
     {/* TECH / OPS */}
-    <option>System Demo</option>
-    <option>IT Support Session</option>
-    <option>System Maintenance Meeting</option>
-    <option>Incident Review</option>
-    <option>Dev Sprint Planning</option>
-    <option>Retrospective</option>
+    <Option value="System Demo">System Demo</Option>
+    <Option value="IT Support Session">IT Support Session</Option>
+    <Option value="System Maintenance Meeting">System Maintenance Meeting</Option>
+    <Option value="Incident Review">Incident Review</Option>
+    <Option value="Dev Sprint Planning">Dev Sprint Planning</Option>
+    <Option value="Retrospective">Retrospective</Option>
 
     {/* EVENTS / OTHERS */}
-    <option>Company Announcement</option>
-    <option>Town Hall Meeting</option>
-    <option>General Assembly</option>
-    <option>Brainstorming Session</option>
-    <option>Networking</option>
-    <option>Other</option>
-</select>
+    <Option value="Company Announcement">Company Announcement</Option>
+    <Option value="Town Hall Meeting">Town Hall Meeting</Option>
+    <Option value="General Assembly">General Assembly</Option>
+    <Option value="Brainstorming Session">Brainstorming Session</Option>
+    <Option value="Networking">Networking</Option>
+    <Option value="Other">Other</Option>
+</Select>
 
                             <input
     placeholder="Receiver Emails (e.g. user1@mail.com, user2@mail.com)"
@@ -777,7 +811,7 @@ return (
             {/* DETAILS */}
             <div className="text-sm bg-gray-50 p-3 rounded space-y-1">
                 <p><b>Room:</b> {rooms.find(r => r.id === selectedReservation?.room_id)?.name || "N/A"}</p>
-                <p><b>Guest:</b> {selectedReservation.guest_name}</p>
+                <p><b>Organizer:</b> {selectedReservation.guest_name}</p>
                 <p><b>Event:</b> {selectedReservation.event_type}</p>
                 <p>
   <b>Schedule:</b>{" "}
@@ -789,7 +823,10 @@ return (
 </p>
             </div>
 
+            <div className="text-sm bg-gray-50 p-3 rounded space-y-1">
+                <div className="space-y-2">
             {/* CANCELED BY */}
+            <label>Canceled by:</label>
             <input
                 className="input cursor-not-allowed bg-gray-100"
                 value={cancelData.canceled_by}
@@ -799,8 +836,10 @@ return (
                 placeholder="Canceled by"
                 readOnly
             />
-
-            {/* REASON */}
+                </div>
+                <div className="space-y-2 mt-2">
+                    {/* REASON */}
+            <label>Reason:</label>
             <textarea
                 className="input h-24"
                 placeholder="Reason"
@@ -809,6 +848,8 @@ return (
                     setCancelData({ ...cancelData, reason: e.target.value })
                 }
             />
+                    </div>
+            </div>
 
             {/* ACTIONS */}
             <div className="flex gap-2">

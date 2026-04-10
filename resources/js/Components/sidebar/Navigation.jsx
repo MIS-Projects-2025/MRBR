@@ -17,6 +17,7 @@ export default function NavLinks() {
 
             <SidebarLink
                 href={route("rooms.index")}
+                // href={route("maintenance")}
                 label="Reservation Schedule"
                 icon={<i className="fa-solid fa-people-roof"></i>}
             />
@@ -33,6 +34,12 @@ export default function NavLinks() {
                 href={route("room.list.index")}
                 label="Room List"
                 icon={<i className="fa-solid fa-people-roof"></i>}
+            />
+
+            <SidebarLink
+                href={route("reservation.history.index")}
+                label="Reservation History"
+                icon={<i className="fa-solid fa-history"></i>}
             />
             </div>
             )}

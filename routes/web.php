@@ -19,5 +19,6 @@ require __DIR__ . '/room_list.php';
  * ✅ Fallback (404)
  */
 Route::fallback(function () {
-    return redirect()->route('dashboard');
+    // For Inertia requests, just redirect back to the same URL
+    return redirect()->to(request()->fullUrl());
 })->name('404');

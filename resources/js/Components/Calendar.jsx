@@ -18,14 +18,14 @@ export default function Calendar({
     const MAX_DAYS = 7;
 
     // =========================
-    // STATUS COLOR LOGIC
+    // STATUS LOGIC
     // =========================
     const getStatus = (r) => {
         const now = moment();
         const start = moment(`${r.start_date}T${r.start_time}`);
         const end = moment(`${r.end_date}T${r.end_time}`);
 
-        if (r.status === "cancelled") return "cancelled";
+        if (r.status === "canceled") return "canceled";
         if (now.isAfter(end)) return "done";
         if (now.isBetween(start, end)) return "ongoing";
         return "pending";
@@ -34,27 +34,71 @@ export default function Calendar({
     // =========================
     // EVENTS MAP
     // =========================
-    const events = reservations.map(r => {
-        const status = getStatus(r);
+    const events = reservations.map(r => ({
+        id: r.id,
+        title: `${r.event_type}<br/>${r.guest_name}`,
+        start: `${r.start_date}T${r.start_time}`,
+        end: `${r.end_date}T${r.end_time}`,
+        extendedProps: {
+            status: getStatus(r),
+            room_id: r.room_id,
+            raw: r
+        }
+    }));
 
-        return {
-            id: r.id,
-            title: `${r.event_type} - ${r.guest_name}`,
-            start: `${r.start_date}T${r.start_time}`,
-            end: `${r.end_date}T${r.end_time}`,
-            extendedProps: {
-                status,
-                guest_name: r.guest_name
-            }
-        };
-    });
+    const calendarStyles = `
+.fc .fc-event {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    text-align: center !important;
+}
+.fc .fc-event-title {
+    width: 100%;
+    text-align: center !important;
+    white-space: pre-line;
+}
+`;
+
+    // =========================
+    // 🔥 CONFLICT CHECK
+    // =========================
+    const hasConflict = (eventId, roomId, start, end) => {
+        return reservations.some(r => {
+            if (r.id == eventId) return false;
+            if (r.room_id !== roomId) return false;
+
+            const rStart = new Date(`${r.start_date}T${r.start_time}`);
+            const rEnd = new Date(`${r.end_date}T${r.end_time}`);
+
+            return rStart < end && rEnd > start;
+        });
+    };
+
+    // =========================
+    // 🔥 GET NEXT RESERVATION
+    // =========================
+    const getNextReservation = (eventId, roomId, start) => {
+        return reservations
+            .filter(r => r.room_id === roomId && r.id != eventId)
+            .filter(r =>
+                moment(`${r.start_date} ${r.start_time}`)
+                    .isAfter(moment(start))
+            )
+            .sort((a, b) =>
+                moment(`${a.start_date} ${a.start_time}`) -
+                moment(`${b.start_date} ${b.start_time}`)
+            )[0];
+    };
 
     return (
         <div
-            className={`bg-white rounded-xl shadow p-3 ${
+            className={`bg-white rounded-xl shadow p-3 h-full ${
                 modalOpen ? "pointer-events-none opacity-50" : ""
             }`}
         >
+            <style>{calendarStyles}</style>
+
             <FullCalendar
                 ref={calendarRef}
                 plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
@@ -66,7 +110,6 @@ export default function Calendar({
                     right: "timeGridDay,timeGridWeek,dayGridMonth"
                 }}
 
-                // ✅ BLOCK PAST DATES (UI LEVEL)
                 validRange={{
                     start: moment().format("YYYY-MM-DD")
                 }}
@@ -74,19 +117,16 @@ export default function Calendar({
                 events={events}
                 selectable={!modalOpen}
                 editable={!modalOpen}
-                height="650px"
+                height="860px"
 
                 // =========================
-                // SLOT SELECT
+                // SELECT SLOT
                 // =========================
                 select={(info) => {
                     if (modalOpen) return;
 
-                    const now = moment();
-
-                    // ❌ BLOCK PAST DATE/TIME
-                    if (moment(info.start).isBefore(now)) {
-                        alert("Cannot reserve past date/time.");
+                    if (moment(info.start).isBefore(moment())) {
+                        alert("Cannot reserve past.");
                         return;
                     }
 
@@ -95,148 +135,168 @@ export default function Calendar({
                         end: info.end
                     });
 
-                    setTimeout(() => {
-                        calendarRef.current?.getApi()?.unselect();
-                    }, 0);
+                    calendarRef.current?.getApi()?.unselect();
                 }}
 
                 // =========================
-                // DRAG EVENT
+                // DRAG MOVE
                 // =========================
                 eventDrop={(info) => {
                     const start = info.event.start;
                     const end = info.event.end;
+                    const eventId = info.event.id;
+                    const roomId = info.event.extendedProps.room_id;
 
-                    const now = moment();
-
-                    // ❌ BLOCK PAST
-                    if (moment(start).isBefore(now)) {
-                        alert("Cannot move reservation to past.");
+                    if (moment(start).isBefore(moment())) {
+                        alert("Cannot move to past.");
                         info.revert();
                         return;
                     }
 
-                    const diffDays =
-                        (end.getTime() - start.getTime()) /
-                        (1000 * 60 * 60 * 24);
-
-                    if (diffDays > MAX_DAYS) {
-                        alert("Max 7 days booking only");
+                    // 🔥 CONFLICT
+                    if (hasConflict(eventId, roomId, start, end)) {
+                        alert("Conflict with another reservation.");
                         info.revert();
                         return;
                     }
 
                     onEventDrop({
-                        id: info.event.id,
+                        id: eventId,
                         start,
                         end
                     });
                 }}
 
                 // =========================
-                // RESIZE EVENT
+                // 🔥 RESIZE (PULL DOWN) 
                 // =========================
-                eventResize={(info) => {
-                    const start = info.event.start;
-                    const end = info.event.end;
+eventResize={(info) => {
+    let start = info.event.start;
+    let end = info.event.end;
 
-                    const now = moment();
+    const eventId = info.event.id;
+    const roomId = info.event.extendedProps.room_id;
 
-                    // ❌ BLOCK PAST
-                    if (moment(start).isBefore(now)) {
-                        alert("Cannot resize to past.");
-                        info.revert();
-                        return;
-                    }
+    const now = moment();
 
-                    const diffDays =
-                        (end.getTime() - start.getTime()) /
-                        (1000 * 60 * 60 * 24);
+    const empName = emp_data?.emp_name;
+    const empRole = emp_data?.emp_role;
+    const guestName = info.event.extendedProps.guest_name;
 
-                    if (diffDays > MAX_DAYS) {
-                        alert("Max 7 days booking only");
-                        info.revert();
-                        return;
-                    }
+    // 🔥 ACCESS CONTROL
+    const isAdmin = ["admin", "superadmin"].includes(empRole);
+    const isOwner = empName === guestName;
 
-                    onEventDrop({
-                        id: info.event.id,
-                        start,
-                        end
-                    });
-                }}
+    if (!isAdmin && !isOwner) {
+        alert(
+                            "You are not allowed to modify this reservation. Only the Organizer or an administrator can modify it.",
+                        );
+        info.revert();
+        return;
+    }
+
+    // fallback kung walang end
+    if (!end) {
+        end = new Date(start.getTime() + 30 * 60000);
+        info.event.setEnd(end);
+    }
+
+    const resStart = moment(start);
+    const resEnd = moment(end);
+
+    // 🔥 BLOCK PAST
+    if (moment(start).isBefore(now)) {
+        alert("Cannot resize to past.");
+        info.revert();
+        return;
+    }
+
+    // 🔥 BLOCK DONE
+    if (now.isAfter(resEnd)) {
+        alert("Cannot modify completed reservation.");
+        info.revert();
+        return;
+    }
+
+    // 🔥 BLOCK ONGOING
+    if (now.isBetween(resStart, resEnd)) {
+        alert("Cannot modify ongoing reservation.");
+        info.revert();
+        return;
+    }
+
+    // 🔥 AUTO STOP SA NEXT RESERVATION
+    const next = getNextReservation(eventId, roomId, start);
+
+    if (next) {
+        const nextStart = new Date(`${next.start_date}T${next.start_time}`);
+
+        if (end > nextStart) {
+            end = nextStart;
+            info.event.setEnd(end);
+        }
+    }
+
+    // 🔥 CONFLICT CHECK
+    if (hasConflict(eventId, roomId, start, end)) {
+        alert("Conflict with another reservation.");
+        info.revert();
+        return;
+    }
+
+    // ✅ SAVE
+    onEventDrop({
+        id: eventId,
+        start,
+        end
+    });
+}}
 
                 // =========================
-                // CLICK EVENT (SAFE CANCEL)
+                // CLICK (CANCEL)
                 // =========================
                 eventClick={(info) => {
                     const status = info.event.extendedProps.status;
-                    const guest = info.event.extendedProps.guest_name;
+                    const res = info.event.extendedProps.raw;
 
                     const empName = emp_data?.emp_name;
                     const isAdmin = ["superadmin", "admin"].includes(emp_data?.emp_role);
 
-                    if (status === "done") {
-                        alert("Cannot cancel completed reservation.");
+                    if (status === "done") return alert("Already done.");
+                    if (status === "canceled") return alert("Already canceled.");
+                    if (status === "ongoing") return alert("Cannot cancel ongoing reservation.");
+
+                    if (!isAdmin && empName !== res.guest_name) {
+                        alert("Not allowed.");
                         return;
                     }
 
-                    if (status === "cancelled") {
-                        alert("Already cancelled.");
-                        return;
-                    }
-
-                    if (status === "ongoing") {
-                        alert("Cannot cancel ongoing reservation.");
-                        return;
-                    }
-
-                    if (!isAdmin && empName !== guest) {
-                        alert("You are not allowed to cancel this reservation.");
-                        return;
-                    }
-
-                    if (confirm("Cancel this booking?")) {
-                        const res = reservations.find(r => r.id == info.event.id);
+                    if (confirm("Cancel booking?")) {
                         onDeleteEvent(res);
                     }
                 }}
 
                 // =========================
-                // COLOR CODING
+                // COLORS
                 // =========================
                 eventClassNames={(arg) => {
                     const status = arg.event.extendedProps.status;
 
-                    switch (status) {
-                        case "cancelled":
-                            return ["bg-red-500", "text-white"];
-                        case "done":
-                            return ["bg-green-500", "text-white"];
-                        case "ongoing":
-                            return ["bg-blue-500", "text-white", "animate-pulse"];
-                        default:
-                            return ["bg-yellow-400", "text-black"];
-                    }
+                    if (status === "canceled") return ["bg-red-500"];
+                    if (status === "done") return ["bg-green-500"];
+                    if (status === "ongoing") return ["bg-blue-500", "animate-pulse"];
+                    return ["bg-yellow-400", "text-black"];
                 }}
 
                 // =========================
-                // EVENT CONTENT
+                // CONTENT
                 // =========================
                 eventContent={(arg) => {
-                    const status = arg.event.extendedProps.status;
-
-                    let icon = "";
-                    if (status === "cancelled") icon = "❌";
-                    else if (status === "done") icon = "✅";
-                    else if (status === "ongoing") icon = "🔵";
-                    else icon = "🟡";
-
                     return {
                         html: `
-                            <div class="p-1 text-xs font-semibold">
-                                ${icon} ${arg.event.title}
-                            </div>
+                        <div class="text-xs font-semibold text-center">
+                            ${arg.event.title}
+                        </div>
                         `
                     };
                 }}

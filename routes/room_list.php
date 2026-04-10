@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\RoomList\ReservationHistoryController;
 use App\Http\Middleware\AdminMiddleware;
 use App\Http\Middleware\AuthMiddleware;
 use Illuminate\Support\Facades\Route;
@@ -22,5 +23,9 @@ Route::prefix($app_name)->middleware(AuthMiddleware::class)->group(function () {
     Route::post("/schedule-list-store", [ScheduleListController::class, 'store'])->name('schedule.list.store');
     Route::put("/schedule-list-update/{id}", [ScheduleListController::class, 'update'])->name('schedule.list.update');
     Route::delete("/schedule-list-destroy/{id}", [ScheduleListController::class, 'destroy'])->name('schedule.list.destroy');
+
+    Route::get("/reservation-history", [ReservationHistoryController::class, 'index'])->name('reservation.history.index');
+    Route::get('/reservation/logs/{reservation_id}', [ReservationHistoryController::class, 'viewHistoryLog'])->name('reservation.history.log');
+    Route::post('/reservation/restore', [ReservationHistoryController::class, 'restore'])->name('reservation.restore');
   });
 });

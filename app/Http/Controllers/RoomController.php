@@ -111,6 +111,23 @@ class RoomController extends Controller
             'updated_at' => now(),
         ]);
 
+
+        // 💾 SAVE RESERVATION HISTORY
+        DB::table('reservation_history')->insertGetId([
+            'reservation_id' => $reservationId,
+            'room_id' => $request->room_id,
+            'guest_name' => $request->guest_name,
+            'event_type' => $request->event_type,
+            'start_date' => $request->start_date,
+            'start_time' => $request->start_time,
+            'end_date' => $request->end_date,
+            'end_time' => $request->end_time,
+            'receivers' => $request->receivers,
+            'remarks' => $request->remarks,
+            'status' => 'created',
+            'reserved_by' => session('emp_data.emp_name') ?? NULL,
+        ]);
+
         // 📧 EMAIL SENDING
         $emails = array_filter(array_map('trim', explode(',', $request->receivers)));
 
