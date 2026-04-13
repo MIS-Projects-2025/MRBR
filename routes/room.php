@@ -6,6 +6,7 @@ use App\Http\Controllers\RoomController;
 use App\Http\Controllers\ReservationController;
 use App\Http\Middleware\AuthMiddleware;
 
+
 /*
 |--------------------------------------------------------------------------
 | PUBLIC ROUTES (NO LOGIN REQUIRED)

@@ -29,6 +29,10 @@ export default {
             animation: {
                 "spin-slow": "spin 8s linear infinite",
             },
+
+            animation: {
+    "spin-slow": "spin 8s linear infinite",
+  },
         },
     },
 
@@ -36,4 +40,6 @@ export default {
     daisyui: {
         themes: ["light", "dark"], // add more if you want
     },
+
+   
 };
