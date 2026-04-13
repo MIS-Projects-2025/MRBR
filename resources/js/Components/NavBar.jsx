@@ -4,12 +4,16 @@ export default function NavBar() {
     const { emp_data } = usePage().props;
 
     // Logout function
-   const logout = () => {
-    localStorage.clear();
-    sessionStorage.clear();
-window.location.reload();
-    router.post(route('logout')); // POST request to Laravel
-};
+    const logout = () => {
+        // Clear client-side storage
+        localStorage.clear();
+        sessionStorage.clear();
+
+        // Call Laravel logout route
+        router.post(route("logout"), {
+            preserveScroll: false,
+        });
+    };
 
     // Greeting function
     const getGreeting = () => {
@@ -39,7 +43,8 @@ window.location.reload();
                                     }}
                                 /> */}
                                 <span className="mt-[3px]">
-                                    Hello {getGreeting()}, {emp_data?.emp_firstname || "User"}
+                                    Hello {getGreeting()},{" "}
+                                    {emp_data?.emp_firstname || "User"}
                                 </span>
                                 <i className="fa-solid fa-caret-down text-2xl"></i>
                             </div>
@@ -49,15 +54,25 @@ window.location.reload();
                                 className="p-2 shadow-md dropdown-content menu rounded-box w-52 bg-teal-600 z-10"
                             >
                                 <li className="text-white">
-                                    <a href={route("profile.index")} className="flex items-center space-x-2">
+                                    <a
+                                        href={route("profile.index")}
+                                        className="flex items-center space-x-2"
+                                    >
                                         <i className="fa-regular fa-id-card"></i>
-                                        <span className="mt-[3px]">Profile</span>
+                                        <span className="mt-[3px]">
+                                            Profile
+                                        </span>
                                     </a>
                                 </li>
                                 <li className="text-white">
-                                    <button onClick={logout} className="flex items-center space-x-2 w-full text-left">
+                                    <button
+                                        onClick={logout}
+                                        className="flex items-center space-x-2 w-full text-left"
+                                    >
                                         <i className="fa-regular fa-share-from-square"></i>
-                                        <span className="mt-[3px]">Log out</span>
+                                        <span className="mt-[3px]">
+                                            Log out
+                                        </span>
                                     </button>
                                 </li>
                             </ul>

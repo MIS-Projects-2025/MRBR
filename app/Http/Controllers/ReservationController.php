@@ -86,6 +86,7 @@ class ReservationController extends Controller
 
             'canceled_by' => $request->canceled_by,
             'reason' => $request->reason,
+            'status' => 'canceled',
 
             'created_at' => now(),
         ]);
@@ -96,4 +97,61 @@ class ReservationController extends Controller
 
         return back()->with('success', 'Reservation canceled successfully.');
     }
+
+    public function updateDate(Request $request, $id)
+{
+    $request->validate([
+        'start_date' => 'required|date',
+        'start_time' => 'required',
+        'end_date' => 'required|date',
+        'end_time' => 'required',
+    ]);
+
+    // 🔥 GET EXISTING
+    $reservation = DB::table('reservations')->where('id', $id)->first();
+
+    if (!$reservation) {
+        return response()->json(['message' => 'Reservation not found'], 404);
+    }
+
+    // ✅ CHECK IF DONE (ONLY BLOCK THIS)
+    $end = \Carbon\Carbon::parse($reservation->end_date . ' ' . $reservation->end_time);
+
+    if (now()->gt($end)) {
+        return back()->with('error', 'Cannot update completed reservation.');
+    }
+
+    // ✅ ALLOWED: pending + ongoing
+
+    // 🔥 UPDATE
+    DB::table('reservations')
+        ->where('id', $id)
+        ->update([
+            'start_date' => $request->start_date,
+            'start_time' => $request->start_time,
+            'end_date' => $request->end_date,
+            'end_time' => $request->end_time,
+        ]);
+
+    // 🔥 HISTORY
+    DB::table('reservation_history')->insert([
+        'reservation_id' => $id,
+        'room_id' => $reservation->room_id,
+        'guest_name' => $reservation->guest_name,
+        'event_type' => $reservation->event_type,
+
+        'start_date' => $request->start_date,
+        'start_time' => $request->start_time,
+        'end_date' => $request->end_date,
+        'end_time' => $request->end_time,
+
+        'receivers' => $reservation->receivers,
+        'remarks' => $reservation->remarks,
+        'status' => 'Date Time Adjusted',
+
+        'reserved_by' => session('emp_data.emp_name') ?? null,
+    ]);
+
+    return back()->with('success', 'Reservation updated successfully.');
+}
 }

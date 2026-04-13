@@ -184,7 +184,7 @@ class RoomListController extends Controller
 
             'canceled_by' => $request->canceled_by,
             'reason' => $request->reason,
-
+            'status' => 'canceled',
             'created_at' => now(),
         ]);
 
