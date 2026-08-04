@@ -28,8 +28,7 @@ export default function Show({ room, reservations }) {
                 <img
                     src={`/rooms/${room.image}`}
                     onError={(e) =>
-                        (e.target.src =
-                            "https://via.placeholder.com/600x300")
+                        (e.target.src = "https://via.placeholder.com/600x300")
                     }
                     className="h-100 md:h-120 w-full object-cover p-4"
                 />
@@ -43,16 +42,12 @@ export default function Show({ room, reservations }) {
                 <input
                     className="border p-2 w-full"
                     placeholder="Name"
-                    onChange={(e) =>
-                        setData("guest_name", e.target.value)
-                    }
+                    onChange={(e) => setData("guest_name", e.target.value)}
                 />
 
                 <select
                     className="border p-2 w-full"
-                    onChange={(e) =>
-                        setData("event_type", e.target.value)
-                    }
+                    onChange={(e) => setData("event_type", e.target.value)}
                 >
                     <option value="">Event Type</option>
                     <option>Meeting</option>
@@ -69,29 +64,23 @@ export default function Show({ room, reservations }) {
                 <input
                     type="time"
                     className="border p-2 w-full"
-                    onChange={(e) =>
-                        setData("start_time", e.target.value)
-                    }
+                    onChange={(e) => setData("start_time", e.target.value)}
                 />
 
                 <input
                     type="time"
                     className="border p-2 w-full"
-                    onChange={(e) =>
-                        setData("end_time", e.target.value)
-                    }
+                    onChange={(e) => setData("end_time", e.target.value)}
                 />
 
                 <textarea
                     className="border p-2 w-full"
                     placeholder="Remarks"
-                    onChange={(e) =>
-                        setData("remarks", e.target.value)
-                    }
+                    onChange={(e) => setData("remarks", e.target.value)}
                 />
 
                 <button className="bg-blue-600 text-white px-4 py-2">
-                    Reserve
+                    reserved
                 </button>
             </form>
 

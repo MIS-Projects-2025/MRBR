@@ -28,7 +28,7 @@ export default function Calendar({
         if (r.status === "canceled") return "canceled";
         if (now.isAfter(end)) return "done";
         if (now.isBetween(start, end)) return "ongoing";
-        return "pending";
+        return "reserved";
     };
 
     // =========================
@@ -36,7 +36,7 @@ export default function Calendar({
     // =========================
     const events = reservations.map((r) => ({
         id: r.id,
-        title: `${r.event_type}<br/>${r.guest_name}`,
+        title: `${r.event_type}<br/>${r.guest_name}<br/>${r.status ?? "reserved"}`,
         start: `${r.start_date}T${r.start_time}`,
         end: `${r.end_date}T${r.end_time}`,
         extendedProps: {
@@ -47,16 +47,16 @@ export default function Calendar({
     }));
 
     const calendarStyles = `
-.fc .fc-event {
+.fc .fc-event-main {
     display: flex !important;
-    justify-content: center !important;
-    align-items: center !important;
-    text-align: center !important;
+    justify-content: center !important; /* horizontal center */
+    align-items: center !important;     /* vertical center */
+    height: 100% !important;
 }
 .fc .fc-event-title {
-    width: 100%;
-    text-align: center !important;
+    text-align: left !important;
     white-space: pre-line;
+    width: 100%;
 }
 `;
 
@@ -207,7 +207,7 @@ export default function Calendar({
                         return;
                     }
 
-                    // ✅ ALLOW ongoing + pending edits
+                    // ✅ ALLOW ongoing + reserved edits
                     // (no restriction for ongoing anymore)
 
                     // 🔥 AUTO STOP SA NEXT RESERVATION
@@ -261,7 +261,7 @@ export default function Calendar({
                         return;
                     }
 
-                    if (confirm("Cancel booking?")) {
+                    if (confirm("Cancel Reservation?")) {
                         onDeleteEvent(res);
                     }
                 }}
@@ -275,7 +275,7 @@ export default function Calendar({
                     if (status === "done") return ["bg-green-500"];
                     if (status === "ongoing")
                         return ["bg-blue-500", "animate-pulse"];
-                    return ["bg-yellow-400", "text-black"];
+                    return ["bg-blue-400", "text-white"];
                 }}
                 // =========================
                 // CONTENT

@@ -4,11 +4,7 @@ import DataTable from "@/Components/DataTable";
 import { useState } from "react";
 import { Drawer, Button, Input, message } from "antd";
 
-export default function ReservationHistory({
-    tableData,
-    tableFilters,
-    emp_data,
-}) {
+export default function ReservationHistory({ tableData, tableFilters, rooms }) {
     // =====================
     // STATE
     // =====================
@@ -18,6 +14,8 @@ export default function ReservationHistory({
     const [selectedRow, setSelectedRow] = useState(null);
     const [restoreReason, setRestoreReason] = useState("");
     const [historyLog, setHistoryLog] = useState([]);
+
+    const roomMap = Object.fromEntries(rooms.map((r) => [r.room_id, r.name]));
 
     // =====================
     // ACTIONS
@@ -205,15 +203,15 @@ export default function ReservationHistory({
                 title="Reservation History Log"
                 open={viewOpen}
                 onClose={() => setViewOpen(false)}
-                width={520}
+                size={520}
             >
                 {selectedRow && (
                     <div className="space-y-4">
                         {/* HEADER */}
                         <div className="p-3 bg-teal-100 rounded-lg text-sm space-y-1">
-                            <p>
+                            {/* <p>
                                 <b>Room:</b> {selectedRow.room_name}
-                            </p>
+                            </p> */}
                             <p>
                                 <b>Guest:</b> {selectedRow.guest_name}
                             </p>
@@ -227,18 +225,24 @@ export default function ReservationHistory({
                             {historyLog.length > 0 ? (
                                 historyLog.map((log, index) => {
                                     const statusColor = {
-                                        created: "bg-green-100 text-green-700",
-                                        "Date Time Adjusted":
-                                            "bg-blue-100 text-blue-700",
-                                        canceled: "bg-red-100 text-red-700",
-                                        restored: "bg-teal-100 text-teal-700",
+                                        created:
+                                            "bg-green-100 text-green-700 border border-green-200",
+                                        canceled:
+                                            "bg-red-100 text-red-700 border border-red-200",
+                                        DateTimeAdjusted:
+                                            "bg-indigo-100 text-indigo-700 border border-indigo-200",
+                                        reserved:
+                                            "bg-blue-100 text-blue-700 border border-blue-200",
+                                        completed:
+                                            "bg-emerald-100 text-emerald-700 border border-emerald-200",
                                     };
 
                                     const dotColor = {
                                         created: "bg-green-500",
-                                        "Date Time Adjusted": "bg-blue-500",
                                         canceled: "bg-red-500",
-                                        restored: "bg-teal-500",
+                                        DateTimeAdjusted: "bg-indigo-500",
+                                        reserved: "bg-blue-500",
+                                        completed: "bg-emerald-500",
                                     };
 
                                     return (
@@ -258,6 +262,17 @@ export default function ReservationHistory({
                                                     <b>Reservation ID:</b>{" "}
                                                     {log.reservation_id}
                                                 </p>
+                                                {log.status ===
+                                                    "DateTimeAdjusted" && (
+                                                    <p>
+                                                        <b>New Room:</b>{" "}
+                                                        {selectedRow.room_name}{" "}
+                                                        →{" "}
+                                                        {roomMap[
+                                                            log.new_room_id
+                                                        ] ?? "Unknown Room"}
+                                                    </p>
+                                                )}
                                                 <p className="text-gray-600">
                                                     {formatDate(log.start_date)}{" "}
                                                     {formatTime(log.start_time)}

@@ -25,7 +25,7 @@ class DashboardController extends Controller
                     WHEN CONCAT(end_date, ' ', end_time) < '{$now}' THEN 'done'
                     WHEN CONCAT(start_date, ' ', start_time) <= '{$now}'
                          AND CONCAT(end_date, ' ', end_time) >= '{$now}' THEN 'ongoing'
-                    ELSE 'pending'
+                    ELSE 'reserved'
                 END
             ")
             ]);

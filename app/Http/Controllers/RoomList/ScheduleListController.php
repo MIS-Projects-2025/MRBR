@@ -32,7 +32,7 @@ class ScheduleListController extends Controller
                 'conditions' => function ($query) {
                     return $query
 
-                        ->orderBy('created_at', 'desc');
+                        ->orderBy('start_date', 'desc');
                 },
 
                 'searchColumns' => ['room_id', 'guest_name', 'event_type', 'start_date', 'start_time', 'end_date', 'end_time', 'remarks'],

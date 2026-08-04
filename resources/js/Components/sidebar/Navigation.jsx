@@ -11,15 +11,8 @@ export default function NavLinks() {
         >
             <SidebarLink
                 href={route("dashboard")}
-                label="Dashboard"
-                icon={<i className="fa-solid fa-dashboard"></i>}
-            />
-
-            <SidebarLink
-                href={route("rooms.index")}
-                // href={route("maintenance")}
-                label="Reservation Schedule"
-                icon={<i className="fa-solid fa-people-roof"></i>}
+                label="Meeting Reservation"
+                icon={<i className="fa-solid fa-calendar"></i>}
             />
 
             {["superadmin", "admin"].includes(emp_data?.emp_role) && (

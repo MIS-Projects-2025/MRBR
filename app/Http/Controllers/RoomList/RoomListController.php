@@ -65,6 +65,8 @@ class RoomListController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
+            'location' => 'nullable|string|max:255',
+            'capacity' => 'nullable|string|max:255',
             'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
@@ -95,6 +97,8 @@ class RoomListController extends Controller
 
         DB::connection('mysql')->table('rooms')->insert([
             'name' => $request->name,
+            'location' => $request->location,
+            'capacity' => $request->capacity,
             'description' => $request->description,
             'image' => $filename,
             'created_at' => now(),
@@ -107,7 +111,9 @@ class RoomListController extends Controller
     public function update(Request $request, $id)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => 'nullable|string|max:255',
+            'location' => 'nullable|string|max:255',
+            'capacity' => 'nullable|string|max:255',
             'description' => 'nullable|string',
             'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
@@ -138,6 +144,8 @@ class RoomListController extends Controller
             ->where('id', $id)
             ->update([
                 'name' => $request->name,
+                'location' => $request->location,
+                'capacity' => $request->capacity,
                 'description' => $request->description,
                 'image' => $filename,
                 'updated_at' => now(),

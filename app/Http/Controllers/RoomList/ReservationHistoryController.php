@@ -20,8 +20,12 @@ class ReservationHistoryController extends Controller
     }
 
 
-    public function index(Request $request)
+     public function index(Request $request)
     {
+
+
+        $rooms = DB::connection('mysql')->table('rooms')->get();
+
         $result = $this->datatable->handle(
             $request,
             'mysql',
@@ -34,6 +38,7 @@ class ReservationHistoryController extends Controller
                         ->select(
                             'reservation_history.reservation_id',
                             'reservation_history.room_id',
+                            'reservation_history.new_room_id',
                             'rooms.name as room_name',
                             'reservation_history.guest_name',
                             'reservation_history.event_type',
@@ -48,6 +53,7 @@ class ReservationHistoryController extends Controller
                         ->groupBy(
                             'reservation_history.reservation_id',
                             'reservation_history.room_id',
+                            'reservation_history.new_room_id',
                             'rooms.name',
                             'reservation_history.guest_name',
                             'reservation_history.event_type',
@@ -90,6 +96,7 @@ class ReservationHistoryController extends Controller
 
         return Inertia::render('RoomList/ReservationHistory', [
             'tableData' => $result['data'],
+            'rooms' => $rooms,
             'tableFilters' => $request->only([
                 'search',
                 'perPage',

@@ -13,92 +13,28 @@ class DashboardController extends Controller
 {
     public function index()
     {
-        $now = Carbon::now();
 
-        /*
-    |--------------------------------------------------------------------------
-    | Move completed reservations to history
-    |--------------------------------------------------------------------------
-    */
 
-        $completedReservations = DB::table('reservations')
-            ->where(function ($query) use ($now) {
 
-                $query->whereDate('end_date', '<', $now->toDateString())
+        // dd($empData, $empRole);
 
-                    ->orWhere(function ($q) use ($now) {
 
-                        $q->whereDate('end_date', $now->toDateString())
-                            ->whereTime('end_time', '<=', $now->format('H:i:s'));
-                    });
-            })
-            ->get();
-
-        foreach ($completedReservations as $reservation) {
-
-            DB::table('reservation_history')->insert([
-                'reservation_id' => $reservation->id,
-                'room_id' => $reservation->room_id,
-                'guest_name' => $reservation->guest_name,
-                'event_type' => $reservation->event_type,
-                'start_date' => $reservation->start_date,
-                'start_time' => $reservation->start_time,
-                'end_date' => $reservation->end_date,
-                'end_time' => $reservation->end_time,
-                'receivers' => $reservation->receivers,
-                'remarks' => $reservation->remarks,
-                'status' => 'completed',
-            ]);
-
-            // delete from active reservations
-            // DB::table('reservations')
-            //     ->where('id', $reservation->id)
-            //     ->delete();
-        }
-
-        /*
-    |--------------------------------------------------------------------------
-    | Active reservations only
-    |--------------------------------------------------------------------------
-    */
-
-        $reservations = DB::table('reservations')->get();
 
         $rooms = DB::table('rooms')->get();
 
-        $empEmail = DB::connection('masterlist')
-            ->table('employee_masterlist')
-            ->whereNotNull('EMAIL')
-            ->whereNotIn('EMAIL', ['na', 'n/a', ''])
-            ->where('ACCSTATUS', 1)
-            ->distinct()
-            ->pluck('EMAIL');
+        $reservations = DB::table('reservations')->get();
 
         if ($rooms->isEmpty()) {
-
             $rooms = collect([
-                (object)[
-                    'id' => 1,
-                    'name' => 'Dasmariñas Room',
-                    'image' => 'room1.jpg'
-                ],
-                (object)[
-                    'id' => 2,
-                    'name' => 'Silang Room',
-                    'image' => 'room2.jpg'
-                ],
-                (object)[
-                    'id' => 3,
-                    'name' => 'Tagaytay Room',
-                    'image' => 'room3.jpg'
-                ],
+                (object)['id' => 1, 'name' => 'Dasmariñas Room', 'image' => 'room1.jpg'],
+                (object)['id' => 2, 'name' => 'Silang Room', 'image' => 'room2.jpg'],
+                (object)['id' => 3, 'name' => 'Tagaytay Room', 'image' => 'room3.jpg'],
             ]);
         }
 
         return Inertia::render('Dashboard', [
             'rooms' => $rooms,
-            'reservations' => $reservations,
-            'empEmail' => $empEmail
+            'reservations' => $reservations
         ]);
     }
 
@@ -175,7 +111,7 @@ class DashboardController extends Controller
             'updated_at' => now(),
         ]);
 
-
+        
         // 💾 SAVE RESERVATION HISTORY
         DB::table('reservation_history')->insertGetId([
             'reservation_id' => $reservationId,
@@ -241,6 +177,13 @@ class DashboardController extends Controller
 {$dateDisplay}
 " . ($timeDisplay ? "⏰ {$timeDisplay}" : "") . "
 
+👥 Participants:
+" . implode(', ', $participants) . "
+
+📝 Remarks:
+{$request->remarks}
+
+— Meeting Room Reservation System
 ";
     }
 

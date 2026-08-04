@@ -7,21 +7,13 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Mail;
 use Carbon\Carbon;
-
+use App\Mail\MeetingRoomNotification;
 
 class RoomController extends Controller
 {
     public function index()
     {
-
-
-
-        // dd($empData, $empRole);
-
-
-
         $rooms = DB::table('rooms')->get();
-
         $reservations = DB::table('reservations')->get();
 
         if ($rooms->isEmpty()) {
@@ -50,9 +42,7 @@ class RoomController extends Controller
             ];
         }
 
-        $reservations = DB::table('reservations')
-            ->where('room_id', $id)
-            ->get();
+        $reservations = DB::table('reservations')->where('room_id', $id)->get();
 
         return Inertia::render('Rooms/Show', [
             'room' => $room,
@@ -60,7 +50,78 @@ class RoomController extends Controller
         ]);
     }
 
+    /**
+     * Check if a given room/time range conflicts with existing reservations.
+     * Excludes a specific reservation id (used for reschedule checks).
+     */
+    private function hasConflict($roomId, $startDate, $startTime, $endDate, $endTime, $excludeId = null)
+    {
+        $newStart = $startDate . ' ' . $startTime;
+        $newEnd   = $endDate . ' ' . $endTime;
 
+        $query = DB::table('reservations')
+            ->where('room_id', $roomId)
+            ->whereRaw("
+                CONCAT(start_date, ' ', start_time) < ?
+                AND CONCAT(end_date, ' ', end_time) > ?
+            ", [$newEnd, $newStart]);
+
+        if ($excludeId) {
+            $query->where('id', '!=', $excludeId);
+        }
+
+        return $query->exists();
+    }
+
+    /**
+     * Insert one reservation + history row. Assumes conflict already checked.
+     * Returns the new reservation id.
+     */
+    private function insertReservation(array $data)
+    {
+        $reservationId = DB::table('reservations')->insertGetId([
+            'room_id' => $data['room_id'],
+            'guest_name' => $data['guest_name'],
+            'event_type' => $data['event_type'],
+            'start_date' => $data['start_date'],
+            'start_time' => $data['start_time'],
+            'end_date' => $data['end_date'],
+            'end_time' => $data['end_time'],
+            'receivers' => $data['receivers'],
+            'remarks' => $data['remarks'] ?? null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('reservation_history')->insertGetId([
+            'reservation_id' => $reservationId,
+            'room_id' => $data['room_id'],
+            'guest_name' => $data['guest_name'],
+            'event_type' => $data['event_type'],
+            'start_date' => $data['start_date'],
+            'start_time' => $data['start_time'],
+            'end_date' => $data['end_date'],
+            'end_time' => $data['end_time'],
+            'receivers' => $data['receivers'],
+            'remarks' => $data['remarks'] ?? null,
+            'status' => 'reserved',
+            'reserved_by' => session('emp_data.emp_name') ?? null,
+        ]);
+
+        return $reservationId;
+    }
+
+    /**
+     * Queue notification emails for a reservation. Non-blocking (ShouldQueue).
+     */
+    private function sendReservationEmails(Request $request, array $emails)
+    {
+        $messageBody = $this->buildEmailMessage($request, $emails);
+
+        foreach ($emails as $email) {
+            Mail::to($email)->queue(new MeetingRoomNotification($messageBody));
+        }
+    }
 
     public function store(Request $request)
     {
@@ -75,78 +136,88 @@ class RoomController extends Controller
             'receivers' => 'required',
         ]);
 
-        // 🔥 CHECK OVERLAP
-        $conflict = DB::table('reservations')
-            ->where('room_id', $request->room_id)
-            ->where(function ($q) use ($request) {
-
-                $newStart = $request->start_date . ' ' . $request->start_time;
-                $newEnd   = $request->end_date . ' ' . $request->end_time;
-
-                $q->whereRaw("
-            CONCAT(start_date, ' ', start_time) < ?
-            AND CONCAT(end_date, ' ', end_time) > ?
-        ", [$newEnd, $newStart]);
-            })
-            ->exists();
-
-        if ($conflict) {
-            return back()->withErrors([
-                'error' => 'slot not available'
-            ]);
+        if ($this->hasConflict($request->room_id, $request->start_date, $request->start_time, $request->end_date, $request->end_time)) {
+            return back()->withErrors(['error' => 'slot not available']);
         }
 
-        // 💾 SAVE RESERVATION
-        $reservationId = DB::table('reservations')->insertGetId([
-            'room_id' => $request->room_id,
-            'guest_name' => $request->guest_name,
-            'event_type' => $request->event_type,
-            'start_date' => $request->start_date,
-            'start_time' => $request->start_time,
-            'end_date' => $request->end_date,
-            'end_time' => $request->end_time,
-            'receivers' => $request->receivers,
-            'remarks' => $request->remarks,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        DB::transaction(function () use ($request) {
+            $this->insertReservation($request->all());
+        });
 
-        
-        // 💾 SAVE RESERVATION HISTORY
-        DB::table('reservation_history')->insertGetId([
-            'reservation_id' => $reservationId,
-            'room_id' => $request->room_id,
-            'guest_name' => $request->guest_name,
-            'event_type' => $request->event_type,
-            'start_date' => $request->start_date,
-            'start_time' => $request->start_time,
-            'end_date' => $request->end_date,
-            'end_time' => $request->end_time,
-            'receivers' => $request->receivers,
-            'remarks' => $request->remarks,
-            'status' => 'created',
-            'reserved_by' => session('emp_data.emp_name') ?? NULL,
-        ]);
-
-        // 📧 EMAIL SENDING
         $emails = array_filter(array_map('trim', explode(',', $request->receivers)));
-
-        foreach ($emails as $email) {
-            Mail::raw($this->buildEmailMessage($request, $emails), function ($message) use ($email) {
-                $message->to($email)
-                    ->subject('📅 Meeting Invitation');
-            });
-        }
+        $this->sendReservationEmails($request, $emails);
 
         return back()->with('success', 'Reservation saved and emails sent!');
     }
 
+    /**
+     * Bulk store — used by the frontend for recurring reservations.
+     * Accepts: { events: [ {room_id, guest_name, event_type, start_date, start_time, end_date, end_time, receivers, remarks}, ... ] }
+     */
+    public function storeBulk(Request $request)
+    {
+        $request->validate([
+            'events' => 'required|array|min:1',
+            'events.*.room_id' => 'required',
+            'events.*.guest_name' => 'required',
+            'events.*.event_type' => 'required',
+            'events.*.start_date' => 'required',
+            'events.*.start_time' => 'required',
+            'events.*.end_date' => 'required',
+            'events.*.end_time' => 'required',
+            'events.*.receivers' => 'required',
+        ]);
+
+        $events = $request->input('events');
+        $conflicts = [];
+
+        // Check all conflicts first, against DB AND against each other in the same batch
+        foreach ($events as $i => $ev) {
+            if ($this->hasConflict($ev['room_id'], $ev['start_date'], $ev['start_time'], $ev['end_date'], $ev['end_time'])) {
+                $conflicts[] = $ev['start_date'];
+                continue;
+            }
+            foreach ($events as $j => $other) {
+                if ($i === $j || $other['room_id'] != $ev['room_id']) continue;
+                $s1 = $ev['start_date'] . ' ' . $ev['start_time'];
+                $e1 = $ev['end_date'] . ' ' . $ev['end_time'];
+                $s2 = $other['start_date'] . ' ' . $other['start_time'];
+                $e2 = $other['end_date'] . ' ' . $other['end_time'];
+                if ($s1 < $e2 && $e1 > $s2) {
+                    $conflicts[] = $ev['start_date'];
+                    break;
+                }
+            }
+        }
+
+        if (!empty($conflicts)) {
+            return back()->withErrors([
+                'error' => 'Conflict on: ' . implode(', ', array_unique($conflicts))
+            ]);
+        }
+
+        $allEmails = [];
+
+        DB::transaction(function () use ($events, &$allEmails) {
+            foreach ($events as $ev) {
+                $this->insertReservation($ev);
+                $emails = array_filter(array_map('trim', explode(',', $ev['receivers'])));
+                $allEmails[] = ['data' => $ev, 'emails' => $emails];
+            }
+        });
+
+        // Queue one email batch per occurrence (still async, so response returns fast)
+        foreach ($allEmails as $item) {
+            $fakeRequest = new Request($item['data']);
+            $this->sendReservationEmails($fakeRequest, $item['emails']);
+        }
+
+        return back()->with('success', count($events) . ' reservation(s) saved and emails queued!');
+    }
 
     private function buildEmailMessage($request, $participants)
     {
-        $room = DB::table('rooms')
-            ->where('id', $request->room_id)
-            ->first();
+        $room = DB::table('rooms')->where('id', $request->room_id)->first();
 
         $roomName = $room->name ?? "Unknown Room";
         $roomLocation = $room->location ?? "Unknown Location";
@@ -166,24 +237,19 @@ class RoomController extends Controller
         }
 
         return "
-📅 {$request->event_type}
+Meeting Title: {$request->event_type}
+
+Topic: {$request->remarks}
 
 👤 Organizer: {$request->guest_name}
 
 🏢 Room: {$roomName}
 📍 Location: {$roomLocation}
 
-📆 Schedule:
+Schedule:
 {$dateDisplay}
 " . ($timeDisplay ? "⏰ {$timeDisplay}" : "") . "
 
-👥 Participants:
-" . implode(', ', $participants) . "
-
-📝 Remarks:
-{$request->remarks}
-
-— Meeting Room Reservation System
 ";
     }
 
@@ -197,8 +263,7 @@ class RoomController extends Controller
 
         try {
             DB::table('reservations')->where('id', $id)->delete();
-
-            return back()->with('success', 'Reservation cancelled successfully.');
+            return back()->with('success', 'Reservation canceled successfully.');
         } catch (\Exception $e) {
             return back()->withErrors(['error' => 'Failed to cancel reservation.']);
         }

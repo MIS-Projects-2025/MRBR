@@ -250,21 +250,11 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
             });
         }
 
-        // ✅ FIX: single bulk request instead of sequential per-event awaits.
-        // This is what removes the "matagal magsave" delay — one HTTP round-trip
-        // and one DB transaction, regardless of how many recurring occurrences there are.
-        try {
-            if (newEvents.length > 1) {
-                await axios.post("/reservations-store-bulk", { events: newEvents });
-            } else {
-                await axios.post("/reservations-store", newEvents[0]);
-            }
-            router.visit("/");
-        } catch (err) {
-            const msg = err.response?.data?.errors?.error || "Failed to save reservation.";
-            alert(msg);
-            setIsSaving(false);
+        for (let event of newEvents) {
+            await axios.post("/reservations-store", event);
         }
+
+        router.visit("/");
     };
 
     const isOwnerOrAdmin = (event) => {

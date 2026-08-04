@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\BookNowController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\RoomController;
@@ -36,12 +37,21 @@ Route::get('/reservations/check', [ReservationController::class, 'check'])
   ->name('reservations.check');
 
 Route::post('/reservations-store', [RoomController::class, 'store']);
+Route::post('/reservations-store-bulk', [RoomController::class, 'storeBulk']);
 
 Route::delete('/reservations-delete/{id}', [RoomController::class, 'destroy']);
 
 Route::post('/reservations-cancel', [ReservationController::class, 'cancel']);
 
 Route::post('/reservations-update/{id}', [ReservationController::class, 'updateDate']);
+
+
+
+Route::get('/rooms/booknow', [BookNowController::class, 'index'])->name('rooms.booknow.index');
+
+Route::delete('/reservation-delete', [BookNowController::class, 'destroy']);
+
+Route::post('/reservation-update', [BookNowController::class, 'updateReservation']);
 
 Route::get('/maintenance', function () {
   return Inertia::render('maintenance');

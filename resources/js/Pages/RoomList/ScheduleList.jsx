@@ -165,7 +165,14 @@ export default function ScheduleList({
                     { key: "actions", label: "Action" },
                 ]}
                 data={tableDatasWithActions}
-                meta={tableData}
+                meta={{
+                                    from: tableData.from,
+                                    to: tableData.to,
+                                    total: tableData.total,
+                                    links: tableData.links,
+                                    currentPage: tableData.current_page,
+                                    lastPage: tableData.last_page,
+                                }}
                 routeName={route("schedule.list.index")}
                 filters={tableFilters}
                 rowKey="id"

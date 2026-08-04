@@ -5,7 +5,7 @@ import moment from "moment";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Select } from "antd";
 
-export default function Index({ rooms, reservations, emp_data }) {
+export default function Dashboard({ rooms, reservations, emp_data }) {
     const { Option } = Select;
 
     const [selectedRoom, setSelectedRoom] = useState(null);
@@ -360,18 +360,22 @@ export default function Index({ rooms, reservations, emp_data }) {
                 {activeTab === "today" && (
                     <div className="p-6 overflow-auto">
                         {/* DATE FILTER */}
-                        {/* <div className="flex items-center gap-3 mb-4">
-            <label className="font-semibold text-teal-600">
-                Select Date:
-            </label>
+                        {["superadmin"].includes(emp_data?.emp_role) && (
+                            <div className="flex items-center gap-3 mb-4">
+                                <label className="font-semibold text-teal-600">
+                                    Select Date:
+                                </label>
 
-            <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="border-teal-600 px-3 py-2 rounded bg-white text-teal-600"
-            />
-        </div> */}
+                                <input
+                                    type="date"
+                                    value={selectedDate}
+                                    onChange={(e) =>
+                                        setSelectedDate(e.target.value)
+                                    }
+                                    className="border-teal-600 px-3 py-2 rounded bg-white text-teal-600"
+                                />
+                            </div>
+                        )}
 
                         <div className="min-w-[1000px]">
                             {/* HEADER */}
@@ -782,7 +786,7 @@ export default function Index({ rooms, reservations, emp_data }) {
                                                 📍 {room.location}
                                             </div>
                                             <div className="text-gray-600">
-                                                👥 {room.capacity} attendees
+                                                👥 {room.capacity} capacity
                                             </div>
                                         </div>
                                     </button>
@@ -802,7 +806,7 @@ export default function Index({ rooms, reservations, emp_data }) {
                                             </div>
                                             <div className="text-gray-600">
                                                 👥 {selectedRoom.capacity}{" "}
-                                                attendees
+                                                capacity
                                             </div>
                                         </div>
                                     </h2>
