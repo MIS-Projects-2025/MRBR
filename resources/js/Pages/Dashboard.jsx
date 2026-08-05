@@ -250,7 +250,7 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
             });
         }
 
-        // ✅ FIX: single bulk request instead of sequential per-event awaits.
+// ✅ FIX: single bulk request instead of sequential per-event awaits.
         // This is what removes the "matagal magsave" delay — one HTTP round-trip
         // and one DB transaction, regardless of how many recurring occurrences there are.
         try {
@@ -259,7 +259,24 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
             } else {
                 await axios.post("/reservations-store", newEvents[0]);
             }
-// ✅ FIX: partial reload — refresh only reservations/rooms props
+
+            // ✅ FIX: reset modal state after successful save.
+            // Since router.reload() does NOT unmount the component (unlike router.visit),
+            // the modal would otherwise stay open showing "Saving..." forever.
+            setIsSaving(false);
+            setSelectedSlot(null);
+            setShowConfirmSave(false);
+            setAgreed(false);
+            setEventType("");
+            setStartTime("");
+            setEndTime("");
+            setAttendees([]);
+            setRemarks("");
+            setIsRecurring(false);
+            setRecurringDays([]);
+            setRecurringUntil("");
+
+            // ✅ FIX: partial reload — refresh only reservations/rooms props
             // instead of rebuilding the whole Dashboard (faster after save)
             router.reload({ only: ["rooms", "reservations"] });
         } catch (err) {
@@ -916,6 +933,13 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                                             }
 
 // ✅ FIX: partial reload instead of full rebuild (faster after cancel)
+                                        // Also reset modal state since router.reload does NOT unmount the component
+                                        setSelectedEvent(null);
+                                        setActionType("");
+                                        setCancelReason("");
+                                        setNewRoom(null);
+                                        setNewStart("");
+                                        setNewEnd("");
                                         router.reload({ only: ["rooms", "reservations"] });
                                         }}
                                     >
