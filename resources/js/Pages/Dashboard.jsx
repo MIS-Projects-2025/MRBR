@@ -259,7 +259,9 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
             } else {
                 await axios.post("/reservations-store", newEvents[0]);
             }
-            router.visit("/");
+// ✅ FIX: partial reload — refresh only reservations/rooms props
+            // instead of rebuilding the whole Dashboard (faster after save)
+            router.reload({ only: ["rooms", "reservations"] });
         } catch (err) {
             const msg = err.response?.data?.errors?.error || "Failed to save reservation.";
             alert(msg);
@@ -469,8 +471,8 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                                                             const end = moment(start).add(1, "hour");
 
                                                             const hasConflict = roomReservations.some((res) => {
-                                                                const s = moment(`${res.date} ${res.start_time}`);
-                                                                const e = moment(`${res.date} ${res.end_time}`);
+                                                                const s = moment(`${res.start_date} ${res.start_time}`);
+                                                                const e = moment(`${res.end_date} ${res.end_time}`);
                                                                 return start.isBefore(e) && end.isAfter(s);
                                                             });
 
@@ -913,7 +915,8 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                                                 });
                                             }
 
-                                            router.visit("/");
+// ✅ FIX: partial reload instead of full rebuild (faster after cancel)
+                                        router.reload({ only: ["rooms", "reservations"] });
                                         }}
                                     >
                                         {actionType === "cancel" ? "yes, Cancel Reservation" : "Confirm Changes"}

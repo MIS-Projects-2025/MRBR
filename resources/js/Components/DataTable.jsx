@@ -1,6 +1,22 @@
 import React, { useState } from "react";
 import { router } from "@inertiajs/react";
 
+// Normalize pagination metadata so it works with both camelCase `meta`
+// objects (legacy) and raw Laravel paginator objects (snake_case keys).
+const normalizeMeta = (input = {}) => {
+    const pick = (camel, snake) =>
+        input[camel] ?? input[snake] ?? undefined;
+
+    return {
+        currentPage: pick("currentPage", "current_page"),
+        lastPage: pick("lastPage", "last_page"),
+        from: pick("from", "from"),
+        to: pick("to", "to"),
+        total: pick("total", "total"),
+        links: input.links ?? [],
+    };
+};
+
 export default function DataTable({
     columns,
     data = [],
@@ -15,6 +31,7 @@ export default function DataTable({
     children,
     filterDropdown = null,
 }) {
+    const pagination = normalizeMeta(meta);
     const [selected, setSelected] = useState([]);
     const [activeRow, setActiveRow] = useState(null);
     const [searchInput, setSearchInput] = useState(filters.search || "");
@@ -116,11 +133,11 @@ export default function DataTable({
         );
     };
 
-    const renderPaginationLinks = () => {
-        if (!meta?.links || !meta.currentPage || !meta.lastPage) return null;
+const renderPaginationLinks = () => {
+        if (!pagination?.links || !pagination.currentPage || !pagination.lastPage) return null;
 
-        const current = meta.currentPage;
-        const last = meta.lastPage;
+        const current = pagination.currentPage;
+        const last = pagination.lastPage;
         const pages = [];
 
         let start = Math.max(current - 2, 1);
@@ -141,7 +158,7 @@ export default function DataTable({
                     disabled={current <= 1}
                     onClick={() =>
                         router.visit(
-                            meta.links.find((l) => l.label === "&laquo;")?.url
+                            pagination.links.find((l) => l.label === "&laquo;")?.url
                         )
                     }
                     dangerouslySetInnerHTML={{ __html: "&laquo;" }}
@@ -153,7 +170,7 @@ export default function DataTable({
                             page === current ? "bg-teal-600 text-white" : ""
                         }`}
                         onClick={() => {
-                            const pageLink = meta.links.find(
+                            const pageLink = pagination.links.find(
                                 (l) => parseInt(l.label) === page
                             );
                             if (pageLink?.url) router.visit(pageLink.url);
@@ -166,7 +183,7 @@ export default function DataTable({
                     disabled={current >= last}
                     onClick={() =>
                         router.visit(
-                            meta.links.find((l) => l.label === "&raquo;")?.url
+                            pagination.links.find((l) => l.label === "&raquo;")?.url
                         )
                     }
                     dangerouslySetInnerHTML={{ __html: "&raquo;" }}
@@ -378,10 +395,10 @@ export default function DataTable({
                 </table>
             </div>
 
-            {meta?.links?.length > 0 && (
+{pagination?.links?.length > 0 && (
                 <div className="flex flex-col gap-2 mt-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="text-sm text-teal-600">
-                        Showing {meta.from} to {meta.to} of {meta.total} results
+                        Showing {pagination.from} to {pagination.to} of {pagination.total} results
                     </div>
                     {renderPaginationLinks()}
                 </div>

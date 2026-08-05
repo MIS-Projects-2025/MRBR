@@ -14,10 +14,6 @@ use App\Http\Middleware\AuthMiddleware;
 |--------------------------------------------------------------------------
 */
 
-// Home → redirect to rooms
-Route::get('/', function () {
-  return redirect()->route('login');
-});
 // Rooms list (cards)
 Route::get('/rooms/list', [RoomController::class, 'index'])
   ->name('rooms.index');

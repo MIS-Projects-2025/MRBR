@@ -11,15 +11,24 @@ class AdminMiddleware
 {
     public function handle(Request $request, Closure $next): Response
     {
-        if (!session('emp_data')) {
+        if (! session('emp_data')) {
             return redirect('/');
         }
 
-        $exists = DB::connection('mysql')->table('admin')
-            ->where('emp_id', session('emp_data')['emp_id'])
-            ->exists();
+        $empData = session('emp_data');
 
-        if (!$exists) {
+        // 🔒 ROLE-BASED ADMIN CHECK
+        // Verify the user is present in the admin table AND has a valid admin role.
+        // This prevents stale/legacy admin records (with null/other roles) from
+        // retaining admin access.
+        $admin = DB::connection('mysql')
+            ->table('admin')
+            ->where('emp_id', $empData['emp_id'])
+            ->first();
+
+        $validRoles = ['admin', 'superadmin'];
+
+        if (! $admin || ! in_array($admin->emp_role, $validRoles, true)) {
             return redirect('/');
         }
 

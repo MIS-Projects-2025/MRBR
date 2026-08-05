@@ -2,59 +2,29 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Support\Facades\DB;
+use App\Services\ReservationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
-use Illuminate\Support\Facades\Mail;
-use Carbon\Carbon;
-
 
 class DashboardController extends Controller
 {
+    protected $reservationService;
+
+    public function __construct(ReservationService $reservationService)
+    {
+        $this->reservationService = $reservationService;
+    }
+
     public function index()
     {
-        $now = Carbon::now();
-
         /*
     |--------------------------------------------------------------------------
     | Move completed reservations to history
     |--------------------------------------------------------------------------
     */
-
-        $completedReservations = DB::table('reservations')
-            ->where(function ($query) use ($now) {
-
-                $query->whereDate('end_date', '<', $now->toDateString())
-
-                    ->orWhere(function ($q) use ($now) {
-
-                        $q->whereDate('end_date', $now->toDateString())
-                            ->whereTime('end_time', '<=', $now->format('H:i:s'));
-                    });
-            })
-            ->get();
-
-        foreach ($completedReservations as $reservation) {
-
-            DB::table('reservation_history')->insert([
-                'reservation_id' => $reservation->id,
-                'room_id' => $reservation->room_id,
-                'guest_name' => $reservation->guest_name,
-                'event_type' => $reservation->event_type,
-                'start_date' => $reservation->start_date,
-                'start_time' => $reservation->start_time,
-                'end_date' => $reservation->end_date,
-                'end_time' => $reservation->end_time,
-                'receivers' => $reservation->receivers,
-                'remarks' => $reservation->remarks,
-                'status' => 'completed',
-            ]);
-
-            // delete from active reservations
-            // DB::table('reservations')
-            //     ->where('id', $reservation->id)
-            //     ->delete();
-        }
+        $this->reservationService->archiveCompletedReservations();
 
         /*
     |--------------------------------------------------------------------------
@@ -66,31 +36,35 @@ class DashboardController extends Controller
 
         $rooms = DB::table('rooms')->get();
 
-        $empEmail = DB::connection('masterlist')
-            ->table('employee_masterlist')
-            ->whereNotNull('EMAIL')
-            ->whereNotIn('EMAIL', ['na', 'n/a', ''])
-            ->where('ACCSTATUS', 1)
-            ->distinct()
-            ->pluck('EMAIL');
+// Cache the employee email list to avoid a full HR masterlist scan on every render.
+        // TTL is 1 hour. The cache is refreshed automatically when it expires.
+        $empEmail = Cache::remember('emp_emails', 3600, function () {
+            return DB::connection('masterlist')
+                ->table('employee_masterlist')
+                ->whereNotNull('EMAIL')
+                ->whereNotIn('EMAIL', ['na', 'n/a', ''])
+                ->where('ACCSTATUS', 1)
+                ->distinct()
+                ->pluck('EMAIL');
+        });
 
         if ($rooms->isEmpty()) {
 
             $rooms = collect([
-                (object)[
+                (object) [
                     'id' => 1,
                     'name' => 'Dasmariñas Room',
-                    'image' => 'room1.jpg'
+                    'image' => 'room1.jpg',
                 ],
-                (object)[
+                (object) [
                     'id' => 2,
                     'name' => 'Silang Room',
-                    'image' => 'room2.jpg'
+                    'image' => 'room2.jpg',
                 ],
-                (object)[
+                (object) [
                     'id' => 3,
                     'name' => 'Tagaytay Room',
-                    'image' => 'room3.jpg'
+                    'image' => 'room3.jpg',
                 ],
             ]);
         }
@@ -98,7 +72,7 @@ class DashboardController extends Controller
         return Inertia::render('Dashboard', [
             'rooms' => $rooms,
             'reservations' => $reservations,
-            'empEmail' => $empEmail
+            'empEmail' => $empEmail,
         ]);
     }
 
@@ -106,11 +80,11 @@ class DashboardController extends Controller
     {
         $room = DB::table('rooms')->where('id', $id)->first();
 
-        if (!$room) {
-            $room = (object)[
+        if (! $room) {
+            $room = (object) [
                 'id' => $id,
                 'name' => 'Sample Room',
-                'image' => 'room1.jpg'
+                'image' => 'room1.jpg',
             ];
         }
 
@@ -120,11 +94,9 @@ class DashboardController extends Controller
 
         return Inertia::render('Rooms/Show', [
             'room' => $room,
-            'reservations' => $reservations
+            'reservations' => $reservations,
         ]);
     }
-
-
 
     public function store(Request $request)
     {
@@ -140,120 +112,34 @@ class DashboardController extends Controller
         ]);
 
         // 🔥 CHECK OVERLAP
-        $conflict = DB::table('reservations')
-            ->where('room_id', $request->room_id)
-            ->where(function ($q) use ($request) {
-
-                $newStart = $request->start_date . ' ' . $request->start_time;
-                $newEnd   = $request->end_date . ' ' . $request->end_time;
-
-                $q->whereRaw("
-            CONCAT(start_date, ' ', start_time) < ?
-            AND CONCAT(end_date, ' ', end_time) > ?
-        ", [$newEnd, $newStart]);
-            })
-            ->exists();
-
-        if ($conflict) {
+        if ($this->reservationService->hasConflict(
+            $request->room_id,
+            $request->start_date,
+            $request->start_time,
+            $request->end_date,
+            $request->end_time
+        )) {
             return back()->withErrors([
-                'error' => 'slot not available'
+                'error' => 'slot not available',
             ]);
         }
 
-        // 💾 SAVE RESERVATION
-        $reservationId = DB::table('reservations')->insertGetId([
-            'room_id' => $request->room_id,
-            'guest_name' => $request->guest_name,
-            'event_type' => $request->event_type,
-            'start_date' => $request->start_date,
-            'start_time' => $request->start_time,
-            'end_date' => $request->end_date,
-            'end_time' => $request->end_time,
-            'receivers' => $request->receivers,
-            'remarks' => $request->remarks,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-
-        // 💾 SAVE RESERVATION HISTORY
-        DB::table('reservation_history')->insertGetId([
-            'reservation_id' => $reservationId,
-            'room_id' => $request->room_id,
-            'guest_name' => $request->guest_name,
-            'event_type' => $request->event_type,
-            'start_date' => $request->start_date,
-            'start_time' => $request->start_time,
-            'end_date' => $request->end_date,
-            'end_time' => $request->end_time,
-            'receivers' => $request->receivers,
-            'remarks' => $request->remarks,
-            'status' => 'reserved',
-            'reserved_by' => session('emp_data.emp_name') ?? NULL,
-        ]);
-
-        // 📧 EMAIL SENDING
-        $emails = array_filter(array_map('trim', explode(',', $request->receivers)));
-
-        foreach ($emails as $email) {
-            Mail::raw($this->buildEmailMessage($request, $emails), function ($message) use ($email) {
-                $message->to($email)
-                    ->subject('📅 Meeting Invitation');
-            });
-        }
+        // 💾 SAVE RESERVATION + HISTORY + QUEUE EMAILS (all in the service)
+        $this->reservationService->create($request->all());
 
         return back()->with('success', 'Reservation saved and emails sent!');
     }
 
-
-    private function buildEmailMessage($request, $participants)
-    {
-        $room = DB::table('rooms')
-            ->where('id', $request->room_id)
-            ->first();
-
-        $roomName = $room->name ?? "Unknown Room";
-        $roomLocation = $room->location ?? "Unknown Location";
-
-        $start = Carbon::parse($request->start_date . ' ' . $request->start_time);
-        $end   = Carbon::parse($request->end_date . ' ' . $request->end_time);
-
-        $startFormatted = $start->format('l, F j Y g:i A');
-        $endFormatted   = $end->format('l, F j Y g:i A');
-
-        if ($start->isSameDay($end)) {
-            $dateDisplay = $start->format('l, F j Y');
-            $timeDisplay = $start->format('g:i A') . ' - ' . $end->format('g:i A');
-        } else {
-            $dateDisplay = $startFormatted . ' → ' . $endFormatted;
-            $timeDisplay = '';
-        }
-
-        return "
-📅 {$request->event_type}
-
-👤 Organizer: {$request->guest_name}
-
-🏢 Room: {$roomName}
-📍 Location: {$roomLocation}
-
-📆 Schedule:
-{$dateDisplay}
-" . ($timeDisplay ? "⏰ {$timeDisplay}" : "") . "
-
-";
-    }
-
     public function destroy($id)
     {
-        $reservation = DB::table('reservations')->where('id', $id)->first();
+        $reservation = $this->reservationService->find($id);
 
-        if (!$reservation) {
+        if (! $reservation) {
             return back()->withErrors(['error' => 'Reservation not found.']);
         }
 
         try {
-            DB::table('reservations')->where('id', $id)->delete();
+            $this->reservationService->cancel($id);
 
             return back()->with('success', 'Reservation canceled successfully.');
         } catch (\Exception $e) {

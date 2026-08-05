@@ -69,15 +69,8 @@ export default function Admin({ tableData, tableFilters, emp_data }) {
                     { key: "emp_name", label: "Employee Name" },
                     { key: "emp_jobtitle", label: "Job Title" },
                 ]}
-                data={tableData.data}
-                meta={{
-                    from: tableData.from,
-                    to: tableData.to,
-                    total: tableData.total,
-                    links: tableData.links,
-                    currentPage: tableData.current_page,
-                    lastPage: tableData.last_page,
-                }}
+data={tableData.data}
+                meta={tableData}
                 routeName={route("admin")}
                 filters={tableFilters}
                 rowKey="emp_id"

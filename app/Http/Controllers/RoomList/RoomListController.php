@@ -4,23 +4,21 @@ namespace App\Http\Controllers\RoomList;
 
 use App\Http\Controllers\Controller;
 use App\Services\DataTableService;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Inertia\Inertia;
 use Illuminate\Support\Facades\File;
-
+use Inertia\Inertia;
 
 class RoomListController extends Controller
 {
     protected $datatable;
+
     protected $datatable1;
 
     public function __construct(DataTableService $datatable)
     {
         $this->datatable = $datatable;
     }
-
 
     public function index(Request $request)
     {
@@ -89,7 +87,7 @@ class RoomListController extends Controller
             $file = $request->file('image');
 
             // 🔥 unique filename
-            $filename = time() . '_' . $file->getClientOriginalName();
+            $filename = time().'_'.$file->getClientOriginalName();
 
             // 🔥 SAVE DIRECTLY TO public/rooms
             $file->move(public_path('rooms'), $filename);
@@ -128,13 +126,13 @@ class RoomListController extends Controller
         if ($request->hasFile('image')) {
 
             // 🔥 DELETE OLD FILE (public/rooms)
-            if ($room->image && file_exists(public_path('rooms/' . $room->image))) {
-                unlink(public_path('rooms/' . $room->image));
+            if ($room->image && file_exists(public_path('rooms/'.$room->image))) {
+                unlink(public_path('rooms/'.$room->image));
             }
 
             // 🔥 SAVE NEW FILE
             $file = $request->file('image');
-            $filename = time() . '_' . $file->getClientOriginalName();
+            $filename = time().'_'.$file->getClientOriginalName();
 
             $file->move(public_path('rooms'), $filename);
         }
@@ -154,18 +152,17 @@ class RoomListController extends Controller
         return back()->with('success', 'Room updated successfully');
     }
 
-
     public function destroy($id)
     {
         $room = DB::connection('mysql')->table('rooms')->where('id', $id)->first();
 
-        if (!$room) {
+        if (! $room) {
             abort(404);
         }
 
         // DELETE IMAGE FILE
-        if ($room->image && File::exists(public_path("rooms/" . $room->image))) {
-            File::delete(public_path("rooms/" . $room->image));
+        if ($room->image && File::exists(public_path('rooms/'.$room->image))) {
+            File::delete(public_path('rooms/'.$room->image));
         }
 
         // DELETE DATABASE RECORD
@@ -175,33 +172,5 @@ class RoomListController extends Controller
             ->delete();
 
         return redirect()->back()->with('success', 'Room deleted successfully.');
-    }
-
-    public function cancel(Request $request)
-    {
-        DB::table('reservation_history')->insert([
-            'reservation_id' => $request->reservation_id,
-            'room_id' => $request->room_id,
-            'guest_name' => $request->guest_name,
-            'event_type' => $request->event_type,
-            'start_date' => $request->start_date,
-            'start_time' => $request->start_time,
-            'end_date' => $request->end_date,
-            'end_time' => $request->end_time,
-            'receivers' => $request->receivers,
-
-            'canceled_by' => $request->canceled_by,
-            'reason' => $request->reason,
-            'status' => 'canceled',
-            'created_at' => now(),
-        ]);
-
-        DB::table('reservations')
-            ->where('id', $request->reservation_id)
-            ->update([
-                'status' => 'canceled'
-            ]);
-
-        return back()->with('success', 'Reservation canceled successfully.');
     }
 }

@@ -181,15 +181,8 @@ export default function ReservationHistory({ tableData, tableFilters, rooms }) {
                     { key: "end_time", label: "End Time" },
                     { key: "actions", label: "Actions" },
                 ]}
-                data={HistoryActions}
-                meta={{
-                    from: tableData.from,
-                    to: tableData.to,
-                    total: tableData.total,
-                    links: tableData.links,
-                    currentPage: tableData.current_page,
-                    lastPage: tableData.last_page,
-                }}
+data={HistoryActions}
+                meta={tableData}
                 routeName={route("reservation.history.index")}
                 filters={tableFilters}
                 rowKey="reservation_id"
@@ -308,7 +301,7 @@ export default function ReservationHistory({ tableData, tableFilters, rooms }) {
                 open={restoreOpen}
                 onClose={() => setRestoreOpen(false)}
                 width={420}
-               
+
             >
                 {selectedRow && (
                     <div className="space-y-4">

@@ -168,15 +168,8 @@ export default function RoomList({ tableData, tableFilters }) {
                     { key: "description", label: "Description" },
                     { key: "actions", label: "Actions" },
                 ]}
-                data={tableDatasWithActions}
-                meta={{
-                    from: tableData.from,
-                    to: tableData.to,
-                    total: tableData.total,
-                    links: tableData.links,
-                    currentPage: tableData.current_page,
-                    lastPage: tableData.last_page,
-                }}
+data={tableDatasWithActions}
+                meta={tableData}
                 routeName={route("room.list.index")}
                 filters={tableFilters}
                 rowKey="id"

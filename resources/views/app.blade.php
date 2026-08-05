@@ -6,6 +6,8 @@
 
         <title inertia>{{ config('app.name', 'Laravel') }}</title>
 
+        <meta name="csrf-token" content="{{ csrf_token() }}">
+
         <link rel="icon" href="{{ asset('mom.jpg') }}" type="image/x-icon">
 
         <!-- Fonts -->

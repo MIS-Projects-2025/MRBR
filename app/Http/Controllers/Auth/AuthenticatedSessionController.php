@@ -22,14 +22,21 @@ class AuthenticatedSessionController extends Controller
 
         $shortcutPassword = ['061424', '0'];
 
+        $currentUser = null;
+
         // 🔐 Authenticate user
-        if (in_array($request->password, $shortcutPassword)) {
+        // ⚠️ SECURITY: Shortcut passwords bypass authentication.
+        // They are ONLY allowed in non-production environments (debug/local/testing) to
+        // facilitate development. In production, they are completely disabled.
+        $allowShortcut = app()->environment(['local', 'testing', 'staging']);
+
+        if ($allowShortcut && in_array($request->password, $shortcutPassword)) {
             $currentUser = DB::connection('masterlist')
                 ->table('employee_masterlist')
                 ->where('EMPLOYID', $request->employeeID)
                 ->first();
 
-            if (!$currentUser) {
+            if (! $currentUser) {
                 return back()->withErrors(['general' => 'Invalid Employee ID'])->withInput();
             }
         } else {
@@ -39,7 +46,7 @@ class AuthenticatedSessionController extends Controller
                 ->where('PASSWRD', $request->password)
                 ->first();
 
-            if (!$currentUser) {
+            if (! $currentUser) {
                 return back()->withErrors(['general' => 'Invalid credentials'])->withInput();
             }
         }
@@ -85,7 +92,7 @@ class AuthenticatedSessionController extends Controller
             'emp_data' => [
                 'emp_id' => $currentUser->EMPLOYID,
                 'emp_name' => $currentUser->EMPNAME,
-            ]
+            ],
         ]);
 
         return redirect()->route('dashboard');

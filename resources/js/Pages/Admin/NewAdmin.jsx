@@ -45,15 +45,8 @@ export default function NewAdmin({ tableData, tableFilters, emp_data }) {
                     { key: "JOB_TITLE", label: "Job Title" },
                     { key: "DEPARTMENT", label: "Department" },
                 ]}
-                data={tableData.data}
-                meta={{
-                    from: tableData.from,
-                    to: tableData.to,
-                    total: tableData.total,
-                    links: tableData.links,
-                    currentPage: tableData.current_page,
-                    lastPage: tableData.last_page,
-                }}
+data={tableData.data}
+                meta={tableData}
                 routeName={route("index_addAdmin")}
                 filters={tableFilters}
                 rowKey="EMPLOYID"

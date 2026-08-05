@@ -12,6 +12,7 @@ use Inertia\Inertia;
 class ReservationHistoryController extends Controller
 {
     protected $datatable;
+
     protected $datatable1;
 
     public function __construct(DataTableService $datatable)
@@ -19,10 +20,8 @@ class ReservationHistoryController extends Controller
         $this->datatable = $datatable;
     }
 
-
-     public function index(Request $request)
+    public function index(Request $request)
     {
-
 
         $rooms = DB::connection('mysql')->table('rooms')->get();
 
@@ -74,7 +73,7 @@ class ReservationHistoryController extends Controller
                     'start_date',
                     'start_time',
                     'end_date',
-                    'end_time'
+                    'end_time',
                 ],
             ]
         );
@@ -83,10 +82,10 @@ class ReservationHistoryController extends Controller
         foreach ($result['data'] as $row) {
 
             $row->start_date = Carbon::parse($row->start_date)->format('F d, Y');
-            $row->end_date   = Carbon::parse($row->end_date)->format('F d, Y');
+            $row->end_date = Carbon::parse($row->end_date)->format('F d, Y');
 
             $row->start_time = Carbon::parse($row->start_time)->format('h:i A');
-            $row->end_time   = Carbon::parse($row->end_time)->format('h:i A');
+            $row->end_time = Carbon::parse($row->end_time)->format('h:i A');
         }
 
         // EXPORT CHECK
@@ -120,8 +119,20 @@ class ReservationHistoryController extends Controller
 
     public function restore(Request $request)
     {
-        DB::table('reservations')->insert([
-            'id' => $request->reservation_id,
+        // ✅ PREVENT DUPLICATE RESTORE — if reservation already active, abort
+        $alreadyActive = DB::table('reservations')
+            ->where('id', $request->reservation_id)
+            ->exists();
+
+        if ($alreadyActive) {
+            return back()->withErrors([
+                'error' => 'This reservation is already active.',
+            ]);
+        }
+
+        // ✅ INSERT WITHOUT FORCING ID — let auto-increment assign a new ID
+        // (explicit id could collide with an existing reservation)
+        $newReservationId = DB::table('reservations')->insertGetId([
             'room_id' => $request->room_id,
             'guest_name' => $request->guest_name,
             'event_type' => $request->event_type,
@@ -131,10 +142,12 @@ class ReservationHistoryController extends Controller
             'end_time' => $request->end_time,
             'receivers' => $request->receivers,
             'remarks' => $request->remarks,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         DB::table('reservation_history')->insert([
-            'reservation_id' => $request->reservation_id,
+            'reservation_id' => $newReservationId,
             'room_id' => $request->room_id,
             'guest_name' => $request->guest_name,
             'event_type' => $request->event_type,
@@ -146,6 +159,8 @@ class ReservationHistoryController extends Controller
             'canceled_by' => null,
             'reason' => null,
             'status' => 'restored',
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         return back()->with('success', 'Reservation restored successfully');

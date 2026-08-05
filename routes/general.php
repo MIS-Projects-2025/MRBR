@@ -9,8 +9,6 @@ use App\Http\Controllers\DashboardController;
 
 $app_name = env('APP_NAME', '');
 
-Route::redirect('/', "/$app_name");
-
 Route::prefix($app_name)->middleware(AuthMiddleware::class)->group(function () {
 
   Route::middleware(AdminMiddleware::class)->group(function () {
