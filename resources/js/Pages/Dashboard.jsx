@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Calendar, momentLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import { router, Link } from "@inertiajs/react";
@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 
 const localizer = momentLocalizer(moment);
 
-// ✅ NEW: Day options for recurring picker
 const DAY_OPTIONS = [
     { label: "Sun", value: 0 },
     { label: "Mon", value: 1 },
@@ -54,10 +53,7 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
     const [showGuide, setShowGuide] = useState(true);
     const [status, setStatus] = useState("busy");
     const [isRecurring, setIsRecurring] = useState(false);
-
-    // ✅ NEW: specific days for recurring
     const [recurringDays, setRecurringDays] = useState([]);
-    // ✅ NEW: "repeat until" date for recurring range
     const [recurringUntil, setRecurringUntil] = useState("");
 
     const [isSaving, setIsSaving] = useState(false);
@@ -81,7 +77,6 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
         }
     }, []);
 
-    // 🔥 transform DB → calendar
     const transformReservations = (data) => {
         return data.map((res) => ({
             id: res.id,
@@ -92,7 +87,6 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
         }));
     };
 
-    // 🔥 init
     useEffect(() => {
         setEvents(transformReservations(reservations));
         if (rooms.length > 0) {
@@ -100,18 +94,210 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
         }
     }, [rooms, reservations]);
 
-    const handleSelectSlot = (slotInfo) => {
+    // ========================================================
+    // REAL-TIME VALIDATION FOR NEW RESERVATIONS
+    // Validates immediately during form fill-up; displays an error and disables Save if conflict is detected
+    // ========================================================
+    const liveValidation = useMemo(() => {
+        if (!startTime || !endTime || !roomId) {
+            return { hasConflict: false, message: "" };
+        }
+
+        const start = new Date(startTime);
+        const end = new Date(endTime);
         const now = new Date();
 
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+            return { hasConflict: false, message: "" };
+        }
+        if (start >= end) {
+            return {
+                hasConflict: true,
+                message: "The end time must be later than the start time.",
+            };
+        }
+        if (start < now || end < now) {
+            return {
+                hasConflict: true,
+                message: "Reservations cannot be made for past dates or times.",
+            };
+        }
+
+        const checkConflict = (s, e) =>
+            events.some(
+                (event) =>
+                    Number(event.room_id) === Number(roomId) &&
+                    s < event.end &&
+                    e > event.start,
+            );
+
+        const roomName =
+            rooms.find((r) => Number(r.id) === Number(roomId))?.name ||
+            "the selected room";
+
+        // Recurring mode
+        if (isRecurring) {
+            if (recurringDays.length === 0) {
+                return {
+                    hasConflict: true,
+                    message:
+                        "Please select at least one day for the recurring reservation.",
+                };
+            }
+            if (!recurringUntil) {
+                return {
+                    hasConflict: true,
+                    message: 'Please specify a "Repeat Until" date.',
+                };
+            }
+
+            const rangeStart = moment(startTime).startOf("day");
+            const rangeEnd = moment(recurringUntil).startOf("day");
+
+            if (rangeEnd.isBefore(rangeStart)) {
+                return {
+                    hasConflict: true,
+                    message:
+                        'The "Repeat Until" date must not be earlier than the start date.',
+                };
+            }
+
+            let current = rangeStart.clone();
+            let iterations = 0;
+            const conflicts = [];
+
+            while (current.isSameOrBefore(rangeEnd) && iterations < 365) {
+                iterations++;
+                if (recurringDays.includes(current.day())) {
+                    const dayStart = current
+                        .clone()
+                        .set({
+                            hour: moment(startTime).hour(),
+                            minute: moment(startTime).minute(),
+                            second: 0,
+                        })
+                        .toDate();
+                    const dayEnd = current
+                        .clone()
+                        .set({
+                            hour: moment(endTime).hour(),
+                            minute: moment(endTime).minute(),
+                            second: 0,
+                        })
+                        .toDate();
+
+                    if (checkConflict(dayStart, dayEnd)) {
+                        conflicts.push(current.format("ddd, MMM DD, YYYY"));
+                        if (conflicts.length >= 3) break;
+                    }
+                }
+                current.add(1, "day");
+            }
+
+            if (conflicts.length > 0) {
+                const more = conflicts.length >= 3 ? " and others" : "";
+                return {
+                    hasConflict: true,
+                    message: `This time slot is already reserved in ${roomName} on: ${conflicts.join(", ")}${more} at ${moment(startTime).format("hh:mm A")} - ${moment(endTime).format("hh:mm A")}. Please select a different time or day.`,
+                };
+            }
+
+            return { hasConflict: false, message: "" };
+        }
+
+        // Single reservation mode
+        if (checkConflict(start, end)) {
+            return {
+                hasConflict: true,
+                message: `This time slot is already reserved in ${roomName} on ${moment(start).format("MMM DD, YYYY hh:mm A")} - ${moment(end).format("hh:mm A")}. Please select a different time.`,
+            };
+        }
+
+        return { hasConflict: false, message: "" };
+    }, [
+        startTime,
+        endTime,
+        roomId,
+        isRecurring,
+        recurringDays,
+        recurringUntil,
+        events,
+        rooms,
+    ]);
+
+    // ========================================================
+    // REAL-TIME VALIDATION FOR RESCHEDULE (ROOM / DATE CHANGE)
+    // Validates immediately when rescheduling to prevent overlapping with existing bookings
+    // ========================================================
+    const rescheduleValidation = useMemo(() => {
+        if (actionType !== "resched" || !selectedEvent) {
+            return { hasConflict: false, message: "" };
+        }
+        if (!newStart || !newEnd || !newRoom) {
+            return { hasConflict: false, message: "" };
+        }
+
+        const start = new Date(newStart);
+        const end = new Date(newEnd);
+        const now = new Date();
+
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+            return { hasConflict: false, message: "" };
+        }
+        if (start >= end) {
+            return {
+                hasConflict: true,
+                message: "The end time must be later than the start time.",
+            };
+        }
+        if (start < now || end < now) {
+            return {
+                hasConflict: true,
+                message:
+                    "Reservations cannot be rescheduled to a past date or time.",
+            };
+        }
+
+        const effectiveRoomId = newRoom || selectedEvent.room_id;
+        const roomName =
+            rooms.find((r) => Number(r.id) === Number(effectiveRoomId))?.name ||
+            "the selected room";
+
+        const hasConflict = events.some(
+            (e) =>
+                Number(e.room_id) === Number(effectiveRoomId) &&
+                Number(e.id) !== Number(selectedEvent.id) &&
+                start < e.end &&
+                end > e.start,
+        );
+
+        if (hasConflict) {
+            return {
+                hasConflict: true,
+                message: `This time slot is already reserved in ${roomName} on ${moment(start).format("MMM DD, YYYY hh:mm A")} - ${moment(end).format("hh:mm A")}. Please select a different room or time.`,
+            };
+        }
+
+        return { hasConflict: false, message: "" };
+    }, [actionType, selectedEvent, newStart, newEnd, newRoom, events, rooms]);
+
+    const handleSelectSlot = (slotInfo) => {
         const hasConflict = reservations.some((res) => {
             if (Number(res.room_id) !== Number(roomId)) return false;
-            const reservationStart = new Date(`${res.start_date}T${res.start_time}`);
+            const reservationStart = new Date(
+                `${res.start_date}T${res.start_time}`,
+            );
             const reservationEnd = new Date(`${res.end_date}T${res.end_time}`);
-            return slotInfo.start < reservationEnd && slotInfo.end > reservationStart;
+            return (
+                slotInfo.start < reservationEnd &&
+                slotInfo.end > reservationStart
+            );
         });
 
         if (hasConflict) {
-            alert("🚫 Oops! This time slot is already taken! Please choose a different time slot.");
+            alert(
+                "This time slot is already taken. Please select a different time slot.",
+            );
             return;
         }
 
@@ -120,17 +306,20 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
         setEndTime(moment(slotInfo.end).format("YYYY-MM-DDTHH:mm"));
     };
 
-    // ✅ Toggle a day in/out of recurring set
     const toggleRecurringDay = (dayValue) => {
         setRecurringDays((prev) =>
             prev.includes(dayValue)
                 ? prev.filter((d) => d !== dayValue)
-                : [...prev, dayValue]
+                : [...prev, dayValue],
         );
     };
 
-    // 🔥 SAVE
     const handleSave = async () => {
+        if (liveValidation.hasConflict) {
+            alert(liveValidation.message);
+            return;
+        }
+
         if (!roomId || !startTime || !endTime) return;
 
         setIsSaving(true);
@@ -140,7 +329,7 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
         const now = new Date();
 
         if (start < now || end < now) {
-            alert("❌ Cannot reserve past date/time.");
+            alert("Reservations cannot be made for past dates or times.");
             setIsSaving(false);
             return;
         }
@@ -155,24 +344,26 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                     e > event.start,
             );
 
-        // ✅ FIXED RECURRING — walk day-by-day, include only selected days
         if (isRecurring) {
             if (recurringDays.length === 0) {
-                alert("Please select at least one day for recurring.");
+                alert(
+                    "Please select at least one day for the recurring reservation.",
+                );
                 setIsSaving(false);
                 return;
             }
             if (!recurringUntil) {
-                alert("Please set a \"Repeat Until\" date for recurring.");
+                alert(
+                    'Please specify a "Repeat Until" date for the recurring reservation.',
+                );
                 setIsSaving(false);
                 return;
             }
 
-            // ✅ FIX: use recurringUntil as the range end, not endTime
             const rangeStart = moment(startTime).startOf("day");
             const rangeEnd = recurringUntil
                 ? moment(recurringUntil).startOf("day")
-                : moment(startTime).startOf("day"); // fallback = same day only
+                : moment(startTime).startOf("day");
 
             let iterations = 0;
             let current = rangeStart.clone();
@@ -200,7 +391,9 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                         .toDate();
 
                     if (checkConflict(dayStart, dayEnd)) {
-                        alert(`Conflict detected on ${current.format("ddd, MMM DD")}!`);
+                        alert(
+                            `A scheduling conflict was detected on ${current.format("ddd, MMM DD")}. Please select a different time.`,
+                        );
                         setIsSaving(false);
                         return;
                     }
@@ -224,13 +417,17 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
             }
 
             if (newEvents.length === 0) {
-                alert("No matching days found in the selected date range. Check your day selection.");
+                alert(
+                    "No matching days were found within the selected date range. Please review your day selection.",
+                );
                 setIsSaving(false);
                 return;
             }
         } else {
             if (checkConflict(start, end)) {
-                alert("🚫 Oops! This time slot is already taken! Please choose a different time slot.");
+                alert(
+                    "This time slot is already taken. Please select a different time slot.",
+                );
                 window.location.reload();
                 return;
             }
@@ -250,19 +447,15 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
             });
         }
 
-// ✅ FIX: single bulk request instead of sequential per-event awaits.
-        // This is what removes the "matagal magsave" delay — one HTTP round-trip
-        // and one DB transaction, regardless of how many recurring occurrences there are.
         try {
             if (newEvents.length > 1) {
-                await axios.post("/reservations-store-bulk", { events: newEvents });
+                await axios.post("/reservations-store-bulk", {
+                    events: newEvents,
+                });
             } else {
                 await axios.post("/reservations-store", newEvents[0]);
             }
 
-            // ✅ FIX: reset modal state after successful save.
-            // Since router.reload() does NOT unmount the component (unlike router.visit),
-            // the modal would otherwise stay open showing "Saving..." forever.
             setIsSaving(false);
             setSelectedSlot(null);
             setShowConfirmSave(false);
@@ -276,11 +469,11 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
             setRecurringDays([]);
             setRecurringUntil("");
 
-            // ✅ FIX: partial reload — refresh only reservations/rooms props
-            // instead of rebuilding the whole Dashboard (faster after save)
             router.reload({ only: ["rooms", "reservations"] });
         } catch (err) {
-            const msg = err.response?.data?.errors?.error || "Failed to save reservation.";
+            const msg =
+                err.response?.data?.errors?.error ||
+                "Failed to save the reservation. Please try again.";
             alert(msg);
             setIsSaving(false);
         }
@@ -297,7 +490,9 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
 
     const [selectedRoom, setSelectedRoom] = useState(null);
     const [activeTab, setActiveTab] = useState("today");
-    const [selectedDate, setSelectedDate] = useState(moment().format("YYYY-MM-DD"));
+    const [selectedDate, setSelectedDate] = useState(
+        moment().format("YYYY-MM-DD"),
+    );
 
     const filteredEvents = events.filter(
         (e) => Number(e.room_id) === Number(selectedRoom?.id),
@@ -314,12 +509,6 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
         setSelectedRoom(null);
         setSelectedSlot(null);
     };
-
-    const timeSlots = [];
-    for (let h = 7; h <= 31; h++) {
-        const hour = h % 24;
-        timeSlots.push(moment({ hour }).format("HH:00"));
-    }
 
     const isDone = (res) => {
         const now = moment();
@@ -341,7 +530,6 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
     return (
         <AuthenticatedLayout>
             <div className="min-h-screen">
-                {/* TABS */}
                 <div className="p-4 flex gap-2 overflow-x-auto justify-between max-w-2xl mx-auto">
                     <button
                         onClick={() => setActiveTab("today")}
@@ -351,7 +539,8 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                                 : "border border-teal-500 bg-white text-teal-500 hover:bg-teal-500 hover:text-white"
                         }`}
                     >
-                        <i className="fa-solid fa-calendar-days"></i> Today Reservations
+                        <i className="fa-solid fa-calendar-days"></i> Today
+                        Reservations
                     </button>
 
                     <button
@@ -366,7 +555,6 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                     </button>
                 </div>
 
-                {/* TAB 1: TIMELINE */}
                 {activeTab === "today" && (
                     <div className="p-6 overflow-auto">
                         <div className="flex justify-end mb-2">
@@ -374,43 +562,82 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                                 onClick={() => setShowTimelineGuide(true)}
                                 className="text-sm text-teal-600 underline"
                             >
-                                ❓ How to use this view
+                                How to use this view
                             </button>
                         </div>
 
                         <div className="flex gap-4 text-xs mb-3">
                             <span className="text-lg flex items-center gap-1">
-                                <span className="w-4 h-4 bg-gray-400 inline-block"></span> Upcoming
+                                <span className="w-4 h-4 bg-gray-400 inline-block"></span>{" "}
+                                Upcoming
                             </span>
-                            <span className="text-lg flex items-center gap-1">🟦 Ongoing</span>
-                            <span className="text-lg flex items-center gap-1">🟩 Done Meeting Schedule Reservation</span>
+                            <span className="text-lg flex items-center gap-1">
+                                🟦 Ongoing
+                            </span>
+                            <span className="text-lg flex items-center gap-1">
+                                🟩 Completed Meeting Reservation
+                            </span>
                         </div>
 
                         {showTimelineGuide && (
-                            <Dialog open={true} onOpenChange={() => setShowTimelineGuide(false)}>
+                            <Dialog
+                                open={true}
+                                onOpenChange={() => setShowTimelineGuide(false)}
+                            >
                                 <div className="space-y-4 p-4 max-w-md">
-                                    <h2 className="text-lg font-bold text-teal-600">📊 Timeline View Guide</h2>
+                                    <h2 className="text-lg font-bold text-teal-600">
+                                        Timeline View Guide
+                                    </h2>
                                     <div>
-                                        <h3 className="text-sm font-semibold text-gray-700 mb-2">General Guide</h3>
+                                        <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                                            General Guide
+                                        </h3>
                                         <ul className="text-sm text-gray-600 space-y-2 list-disc pl-5">
-                                            <li>Each column represents a meeting room</li>
-                                            <li>Time runs from 7:00 AM to midnight</li>
-                                            <li>Click a room column to create a reservation</li>
+                                            <li>
+                                                Each column represents a meeting
+                                                room
+                                            </li>
+                                            <li>
+                                                Time runs from 7:00 AM to
+                                                midnight
+                                            </li>
+                                            <li>
+                                                Click a room column to create a
+                                                reservation
+                                            </li>
                                         </ul>
                                     </div>
                                     <div>
-                                        <h3 className="text-sm font-semibold text-gray-700 mb-2">🎨 Color Guide</h3>
+                                        <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                                            Color Guide
+                                        </h3>
                                         <ul className="space-y-2 text-sm text-gray-600">
-                                            <li className="flex items-center gap-2"><span className="w-4 h-4 bg-gray-500 rounded-sm"></span> Gray = Upcoming Meeting</li>
-                                            <li className="flex items-center gap-2"><span className="w-4 h-4 bg-blue-500 rounded-sm"></span> Blue = Ongoing Meeting</li>
-                                            <li className="flex items-center gap-2"><span className="w-4 h-4 bg-emerald-500 rounded-sm"></span> Green = Completed Meeting</li>
+                                            <li className="flex items-center gap-2">
+                                                <span className="w-4 h-4 bg-gray-500 rounded-sm"></span>{" "}
+                                                Gray = Upcoming Meeting
+                                            </li>
+                                            <li className="flex items-center gap-2">
+                                                <span className="w-4 h-4 bg-blue-500 rounded-sm"></span>{" "}
+                                                Blue = Ongoing Meeting
+                                            </li>
+                                            <li className="flex items-center gap-2">
+                                                <span className="w-4 h-4 bg-emerald-500 rounded-sm"></span>{" "}
+                                                Green = Completed Meeting
+                                            </li>
                                         </ul>
                                     </div>
                                     <div className="bg-yellow-50 border border-yellow-200 p-2 rounded text-xs text-yellow-700">
-                                        ⚠️ Past dates cannot be reserved
+                                        Past dates cannot be reserved.
                                     </div>
                                     <div className="flex justify-end">
-                                        <Button onClick={() => setShowTimelineGuide(false)} className="bg-teal-500 text-white">Got it</Button>
+                                        <Button
+                                            onClick={() =>
+                                                setShowTimelineGuide(false)
+                                            }
+                                            className="bg-teal-500 text-white"
+                                        >
+                                            Got it
+                                        </Button>
                                     </div>
                                 </div>
                             </Dialog>
@@ -418,21 +645,35 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
 
                         {["superadmin"].includes(emp_data?.emp_role) && (
                             <div className="flex items-center gap-3 mb-4">
-                                <label className="font-semibold text-teal-600">Select Date:</label>
+                                <label className="font-semibold text-teal-600">
+                                    Select Date:
+                                </label>
                                 <input
                                     type="date"
                                     value={selectedDate}
-                                    onChange={(e) => setSelectedDate(e.target.value)}
+                                    onChange={(e) =>
+                                        setSelectedDate(e.target.value)
+                                    }
                                     className="border-teal-600 px-3 py-2 rounded bg-white text-teal-600"
                                 />
                             </div>
                         )}
 
                         <div className="min-w-[1000px]">
-                            <div className="grid" style={{ gridTemplateColumns: `120px repeat(${rooms.length}, 1fr)` }}>
-                                <div className="p-2 font-bold bg-gray-100">Time</div>
+                            <div
+                                className="grid"
+                                style={{
+                                    gridTemplateColumns: `120px repeat(${rooms.length}, 1fr)`,
+                                }}
+                            >
+                                <div className="p-2 font-bold bg-gray-100">
+                                    Time
+                                </div>
                                 {rooms.map((room) => (
-                                    <div key={room.id} className="p-2 font-bold text-teal-600 border bg-white">
+                                    <div
+                                        key={room.id}
+                                        className="p-2 font-bold text-teal-600 border bg-white"
+                                    >
                                         {room.name}
                                     </div>
                                 ))}
@@ -444,94 +685,274 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                                 const PX_PER_HOUR = 64;
 
                                 return (
-                                    <div className="grid" style={{ gridTemplateColumns: `120px repeat(${rooms.length}, 1fr)` }}>
+                                    <div
+                                        className="grid"
+                                        style={{
+                                            gridTemplateColumns: `120px repeat(${rooms.length}, 1fr)`,
+                                        }}
+                                    >
                                         <div className="border-r bg-gray-50">
-                                            {Array.from({ length: HOURS }).map((_, i) => {
-                                                const hour = START_HOUR + i;
-                                                return (
-                                                    <div key={i} className="h-16 border-b text-[10px] text-gray-400 px-1">
-                                                        {moment().startOf("day").add(hour, "hours").format("HH:00")}
-                                                    </div>
-                                                );
-                                            })}
+                                            {Array.from({ length: HOURS }).map(
+                                                (_, i) => {
+                                                    const hour = START_HOUR + i;
+                                                    return (
+                                                        <div
+                                                            key={i}
+                                                            className="h-16 border-b text-[10px] text-gray-400 px-1"
+                                                        >
+                                                            {moment()
+                                                                .startOf("day")
+                                                                .add(
+                                                                    hour,
+                                                                    "hours",
+                                                                )
+                                                                .format(
+                                                                    "HH:00",
+                                                                )}
+                                                        </div>
+                                                    );
+                                                },
+                                            )}
                                         </div>
 
                                         {rooms.map((room) => {
-                                            const roomReservations = reservations.filter((r) => {
-                                                if (r.room_id !== room.id) return false;
-                                                const selected = moment(selectedDate);
-                                                const start = moment(r.start_date);
-                                                const end = moment(r.end_date);
-                                                return selected.isBetween(start, end, null, "[]");
-                                            });
+                                            const roomReservations =
+                                                reservations.filter((r) => {
+                                                    if (r.room_id !== room.id)
+                                                        return false;
+                                                    const selected =
+                                                        moment(selectedDate);
+                                                    const start = moment(
+                                                        r.start_date,
+                                                    );
+                                                    const end = moment(
+                                                        r.end_date,
+                                                    );
+                                                    return selected.isBetween(
+                                                        start,
+                                                        end,
+                                                        null,
+                                                        "[]",
+                                                    );
+                                                });
 
                                             return (
                                                 <div
                                                     key={room.id}
                                                     className="relative z-0"
-                                                    style={{ height: `${HOURS * PX_PER_HOUR}px` }}
+                                                    style={{
+                                                        height: `${HOURS * PX_PER_HOUR}px`,
+                                                    }}
                                                 >
-                                                    {Array.from({ length: HOURS }).map((_, i) => (
-                                                        <div key={i} className="h-16 border-b" />
+                                                    {Array.from({
+                                                        length: HOURS,
+                                                    }).map((_, i) => (
+                                                        <div
+                                                            key={i}
+                                                            className="h-16 border-b"
+                                                        />
                                                     ))}
 
                                                     <div
                                                         className="absolute inset-0 cursor-pointer hover:bg-green-50 z-10"
                                                         onClick={(e) => {
-                                                            const rect = e.currentTarget.getBoundingClientRect();
-                                                            const y = e.clientY - rect.top;
-                                                            const minutes = (y / PX_PER_HOUR) * 60;
-                                                            const start = moment(selectedDate)
-                                                                .startOf("day")
-                                                                .add(START_HOUR, "hours")
-                                                                .add(minutes, "minutes");
-                                                            const end = moment(start).add(1, "hour");
+                                                            const rect =
+                                                                e.currentTarget.getBoundingClientRect();
+                                                            const y =
+                                                                e.clientY -
+                                                                rect.top;
+                                                            const minutes =
+                                                                (y /
+                                                                    PX_PER_HOUR) *
+                                                                60;
+                                                            const start =
+                                                                moment(
+                                                                    selectedDate,
+                                                                )
+                                                                    .startOf(
+                                                                        "day",
+                                                                    )
+                                                                    .add(
+                                                                        START_HOUR,
+                                                                        "hours",
+                                                                    )
+                                                                    .add(
+                                                                        minutes,
+                                                                        "minutes",
+                                                                    );
+                                                            const end = moment(
+                                                                start,
+                                                            ).add(1, "hour");
 
-                                                            const hasConflict = roomReservations.some((res) => {
-                                                                const s = moment(`${res.start_date} ${res.start_time}`);
-                                                                const e = moment(`${res.end_date} ${res.end_time}`);
-                                                                return start.isBefore(e) && end.isAfter(s);
-                                                            });
+                                                            const hasConflict =
+                                                                roomReservations.some(
+                                                                    (res) => {
+                                                                        const s =
+                                                                            moment(
+                                                                                `${res.start_date} ${res.start_time}`,
+                                                                            );
+                                                                        const e =
+                                                                            moment(
+                                                                                `${res.end_date} ${res.end_time}`,
+                                                                            );
+                                                                        return (
+                                                                            start.isBefore(
+                                                                                e,
+                                                                            ) &&
+                                                                            end.isAfter(
+                                                                                s,
+                                                                            )
+                                                                        );
+                                                                    },
+                                                                );
 
-                                                            if (hasConflict) return;
+                                                            if (hasConflict)
+                                                                return;
 
-                                                            setSelectedRoom(room);
-                                                            setRoomId(room.id); // ✅ FIX: sync roomId when clicking timeline
-                                                            setActiveTab("calendar");
-                                                            setSelectedSlot(null);
+                                                            setSelectedRoom(
+                                                                room,
+                                                            );
+                                                            setRoomId(room.id);
+                                                            setActiveTab(
+                                                                "calendar",
+                                                            );
+                                                            setSelectedSlot(
+                                                                null,
+                                                            );
                                                         }}
                                                     />
 
-                                                    {roomReservations.map((res) => {
-                                                        const resStart = moment(`${res.start_date} ${res.start_time}`);
-                                                        const resEnd = moment(`${res.end_date} ${res.end_time}`);
-                                                        const dayStart = moment(selectedDate).startOf("day").add(START_HOUR, "hours");
-                                                        const dayEnd = moment(selectedDate).startOf("day").add(START_HOUR + HOURS, "hours");
-                                                        const start = moment.max(resStart, dayStart);
-                                                        const end = moment.min(resEnd, dayEnd);
+                                                    {roomReservations.map(
+                                                        (res) => {
+                                                            const resStart =
+                                                                moment(
+                                                                    `${res.start_date} ${res.start_time}`,
+                                                                );
+                                                            const resEnd =
+                                                                moment(
+                                                                    `${res.end_date} ${res.end_time}`,
+                                                                );
+                                                            const dayStart =
+                                                                moment(
+                                                                    selectedDate,
+                                                                )
+                                                                    .startOf(
+                                                                        "day",
+                                                                    )
+                                                                    .add(
+                                                                        START_HOUR,
+                                                                        "hours",
+                                                                    );
+                                                            const dayEnd =
+                                                                moment(
+                                                                    selectedDate,
+                                                                )
+                                                                    .startOf(
+                                                                        "day",
+                                                                    )
+                                                                    .add(
+                                                                        START_HOUR +
+                                                                            HOURS,
+                                                                        "hours",
+                                                                    );
+                                                            const start =
+                                                                moment.max(
+                                                                    resStart,
+                                                                    dayStart,
+                                                                );
+                                                            const end =
+                                                                moment.min(
+                                                                    resEnd,
+                                                                    dayEnd,
+                                                                );
 
-                                                        if (end.isSameOrBefore(start)) return null;
+                                                            if (
+                                                                end.isSameOrBefore(
+                                                                    start,
+                                                                )
+                                                            )
+                                                                return null;
 
-                                                        const top = (start.diff(dayStart, "minutes") / 60) * PX_PER_HOUR;
-                                                        const height = (end.diff(start, "minutes") / 60) * PX_PER_HOUR;
-                                                        const fontSize = height < 40 ? 10 : height < 80 ? 12 : height < 140 ? 14 : 16;
+                                                            const top =
+                                                                (start.diff(
+                                                                    dayStart,
+                                                                    "minutes",
+                                                                ) /
+                                                                    60) *
+                                                                PX_PER_HOUR;
+                                                            const height =
+                                                                (end.diff(
+                                                                    start,
+                                                                    "minutes",
+                                                                ) /
+                                                                    60) *
+                                                                PX_PER_HOUR;
+                                                            const fontSize =
+                                                                height < 40
+                                                                    ? 10
+                                                                    : height <
+                                                                        80
+                                                                      ? 12
+                                                                      : height <
+                                                                          140
+                                                                        ? 14
+                                                                        : 16;
 
-                                                        return (
-                                                            <div
-                                                                key={res.id}
-                                                                className={`absolute left-1 right-1 text-white rounded shadow z-20 flex flex-col items-center justify-center text-center overflow-hidden ${getStatusColor(res)}`}
-                                                                onClick={() => {
-                                                                    if (isDone(res)) { alert("Reservation is done."); return; }
-                                                                    if (!canCancel(res)) { alert("❌ You are not allowed to manage this reservation."); return; }
-                                                                    setSelectedEvent(res);
-                                                                }}
-                                                                style={{ top: `${top}px`, height: `${height}px`, fontSize: `${fontSize}px` }}
-                                                            >
-                                                                {height > 25 && <div className="font-bold text-xs">{res.guest_name}</div>}
-                                                                {height > 50 && <div className="text-xs">{res.event_type}</div>}
-                                                            </div>
-                                                        );
-                                                    })}
+                                                            return (
+                                                                <div
+                                                                    key={res.id}
+                                                                    className={`absolute left-1 right-1 text-white rounded shadow z-20 flex flex-col items-center justify-center text-center overflow-hidden ${getStatusColor(res)}`}
+                                                                    onClick={() => {
+                                                                        if (
+                                                                            isDone(
+                                                                                res,
+                                                                            )
+                                                                        ) {
+                                                                            alert(
+                                                                                "This reservation has already been completed.",
+                                                                            );
+                                                                            return;
+                                                                        }
+                                                                        if (
+                                                                            !canCancel(
+                                                                                res,
+                                                                            )
+                                                                        ) {
+                                                                            alert(
+                                                                                "You are not authorized to manage this reservation.",
+                                                                            );
+                                                                            return;
+                                                                        }
+                                                                        setSelectedEvent(
+                                                                            res,
+                                                                        );
+                                                                    }}
+                                                                    style={{
+                                                                        top: `${top}px`,
+                                                                        height: `${height}px`,
+                                                                        fontSize: `${fontSize}px`,
+                                                                    }}
+                                                                >
+                                                                    {height >
+                                                                        25 && (
+                                                                        <div className="font-bold text-xs">
+                                                                            {
+                                                                                res.guest_name
+                                                                            }
+                                                                        </div>
+                                                                    )}
+                                                                    {height >
+                                                                        50 && (
+                                                                        <div className="text-xs">
+                                                                            {
+                                                                                res.event_type
+                                                                            }
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        },
+                                                    )}
                                                 </div>
                                             );
                                         })}
@@ -542,7 +963,6 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                     </div>
                 )}
 
-                {/* TAB 2: ROOMS + CALENDAR */}
                 {activeTab === "calendar" && (
                     <>
                         {!selectedRoom && (
@@ -554,27 +974,45 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                                         onClick={() => {
                                             if (room.isSoon) return;
                                             setSelectedRoom(room);
-                                            // ✅ FIX: sync roomId when selecting room card
                                             setRoomId(room.id);
-                                            const seen = localStorage.getItem("seenReservationGuide");
+                                            const seen = localStorage.getItem(
+                                                "seenReservationGuide",
+                                            );
                                             if (!seen) {
                                                 setShowGuide(true);
-                                                localStorage.setItem("seenReservationGuide", "true");
+                                                localStorage.setItem(
+                                                    "seenReservationGuide",
+                                                    "true",
+                                                );
                                             }
                                         }}
                                         className={`shadow rounded-xl overflow-hidden ${
-                                            room.isSoon ? "bg-gray-100 cursor-not-allowed opacity-70" : "bg-white"
+                                            room.isSoon
+                                                ? "bg-gray-100 cursor-not-allowed opacity-70"
+                                                : "bg-white"
                                         }`}
                                     >
-                                        <img src={`/rooms/${room.image}`} className="h-40 w-full object-cover" />
+                                        <img
+                                            src={`/rooms/${room.image}`}
+                                            className="h-40 w-full object-cover"
+                                        />
                                         <div className="p-3 bg-gray-50 rounded-lg text-sm">
-                                            <div className="font-semibold text-teal-700">{room.name}</div>
+                                            <div className="font-semibold text-teal-700">
+                                                {room.name}
+                                            </div>
                                             {room.isSoon ? (
-                                                <div className="text-gray-500 font-bold">SOON</div>
+                                                <div className="text-gray-500 font-bold">
+                                                    SOON
+                                                </div>
                                             ) : (
                                                 <>
-                                                    <div className="text-gray-600">📍 {room.location}</div>
-                                                    <div className="text-gray-600">👥 {room.capacity} capacity</div>
+                                                    <div className="text-gray-600">
+                                                        📍 {room.location}
+                                                    </div>
+                                                    <div className="text-gray-600">
+                                                        👥 {room.capacity}{" "}
+                                                        capacity
+                                                    </div>
                                                 </>
                                             )}
                                         </div>
@@ -586,18 +1024,51 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                         {selectedRoom && (
                             <>
                                 {showGuide && (
-                                    <Dialog open={true} onOpenChange={() => setShowGuide(false)}>
+                                    <Dialog
+                                        open={true}
+                                        onOpenChange={() => setShowGuide(false)}
+                                    >
                                         <div className="space-y-4 p-2 max-w-md">
-                                            <h2 className="text-lg font-bold text-teal-600">📌 How to Reserve a Room</h2>
+                                            <h2 className="text-lg font-bold text-teal-600">
+                                                How to Reserve a Room
+                                            </h2>
                                             <ul className="text-sm text-gray-600 space-y-2 list-disc pl-5">
-                                                <li>Click empty space to create a reservation or drag to choose a time slot</li>
-                                                <li>Fill in meeting details</li>
-                                                <li>Select recipient (required)</li>
-                                                <li>Click <b className="text-white bg-teal-500 p-1 rounded"><i className="fa-solid fa-floppy-disk"></i> Save</b> to confirm reservation</li>
-                                                <li className="text-red-600 font-semibold">⚠️ Avoid overlapping reservations. If conflict occurs, try a different time or room.</li>
+                                                <li>
+                                                    Click an empty space to
+                                                    create a reservation or drag
+                                                    to select a time slot
+                                                </li>
+                                                <li>
+                                                    Complete the meeting details
+                                                </li>
+                                                <li>
+                                                    Select at least one
+                                                    recipient (required)
+                                                </li>
+                                                <li>
+                                                    Click{" "}
+                                                    <b className="text-white bg-teal-500 p-1 rounded">
+                                                        <i className="fa-solid fa-floppy-disk"></i>{" "}
+                                                        Save
+                                                    </b>{" "}
+                                                    to confirm the reservation
+                                                </li>
+                                                <li className="text-red-600 font-semibold">
+                                                    Please avoid overlapping
+                                                    reservations. If a conflict
+                                                    occurs, select a different
+                                                    time or room.
+                                                </li>
                                             </ul>
                                             <div className="flex justify-end">
-                                                <Button onClick={() => setShowGuide(false)} className="bg-teal-500 text-white hover:bg-teal-600">Got it</Button>
+                                                <Button
+                                                    onClick={() =>
+                                                        setShowGuide(false)
+                                                    }
+                                                    className="bg-teal-500 text-white hover:bg-teal-600"
+                                                >
+                                                    Got it
+                                                </Button>
                                             </div>
                                         </div>
                                     </Dialog>
@@ -605,8 +1076,15 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
 
                                 <div className="p-6 text-gray-600">
                                     <div className="flex justify-between mb-3">
-                                        <h2 className="text-xl font-bold text-teal-600">{selectedRoom.name}</h2>
-                                        <button onClick={resetAll} className="text-teal-600">Back</button>
+                                        <h2 className="text-xl font-bold text-teal-600">
+                                            {selectedRoom.name}
+                                        </h2>
+                                        <button
+                                            onClick={resetAll}
+                                            className="text-teal-600"
+                                        >
+                                            Back
+                                        </button>
                                     </div>
 
                                     <Calendar
@@ -620,7 +1098,9 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                                         onSelectSlot={handleSelectSlot}
                                         onSelectEvent={(event) => {
                                             if (!isOwnerOrAdmin(event)) {
-                                                alert("❌ You are not allowed to manage this reservation.");
+                                                alert(
+                                                    "You are not authorized to manage this reservation.",
+                                                );
                                                 return;
                                             }
                                             setSelectedEvent(event);
@@ -632,17 +1112,25 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                     </>
                 )}
 
-                {/* NEW BOOKING MODAL */}
+                {/* NEW BOOKING MODAL WITH REAL-TIME VALIDATION */}
                 {selectedSlot && (
-                    <Dialog open={true} onOpenChange={() => setSelectedSlot(null)}>
-                        <div className="space-y-3">
+                    <Dialog
+                        open={true}
+                        onOpenChange={() => setSelectedSlot(null)}
+                    >
+                        <div className="space-y-3 max-h-[85vh] overflow-y-auto p-1">
                             <h2 className="text-lg font-semibold text-teal-600">
-                                <i className="fa-solid fa-calendar-check"></i> New Meeting Reservation
+                                <i className="fa-solid fa-calendar-check"></i>{" "}
+                                New Meeting Reservation
                             </h2>
 
                             <div className="border p-2 bg-gray-100 rounded">
-                                <p className="text-xs text-gray-500">Reserved By</p>
-                                <p className="font-semibold">{emp_data?.emp_name || "Unknown User"}</p>
+                                <p className="text-xs text-gray-500">
+                                    Reserved By
+                                </p>
+                                <p className="font-semibold">
+                                    {emp_data?.emp_name || "Unknown User"}
+                                </p>
                             </div>
 
                             <div>
@@ -654,90 +1142,251 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                                     value={eventType}
                                     onChange={(value) => setEventType(value)}
                                     options={[
-                                        { label: "CORE OFFICE EVENTS", options: [
-                                            { value: "Meeting", label: "Meeting" },
-                                            { value: "Team Meeting", label: "Team Meeting" },
-                                            { value: "Department Meeting", label: "Department Meeting" },
-                                            { value: "Management Meeting", label: "Management Meeting" },
-                                            { value: "Client Meeting", label: "Client Meeting" },
-                                            { value: "Board Meeting", label: "Board Meeting" },
-                                            { value: "Corporate Meeting", label: "Corporate Meeting" },
-                                        ]},
-                                        { label: "TRAINING / LEARNING", options: [
-                                            { value: "Training", label: "Training" },
-                                            { value: "Workshop", label: "Workshop" },
-                                            { value: "Seminar", label: "Seminar" },
-                                            { value: "Webinar", label: "Webinar" },
-                                            { value: "Orientation", label: "Orientation" },
-                                            { value: "Onboarding Session", label: "Onboarding Session" },
-                                        ]},
-                                        { label: "BUSINESS EVENTS", options: [
-                                            { value: "Presentation", label: "Presentation" },
-                                            { value: "Project Kickoff", label: "Project Kickoff" },
-                                            { value: "Project Review", label: "Project Review" },
-                                            { value: "Strategy Planning", label: "Strategy Planning" },
-                                            { value: "Budget Meeting", label: "Budget Meeting" },
-                                            { value: "Quarterly Review", label: "Quarterly Review" },
-                                        ]},
-                                        { label: "HR / ADMIN", options: [
-                                            { value: "Interview", label: "Interview" },
-                                            { value: "Performance Review", label: "Performance Review" },
-                                            { value: "Disciplinary Meeting", label: "Disciplinary Meeting" },
-                                            { value: "Policy Discussion", label: "Policy Discussion" },
-                                        ]},
-                                        { label: "TECH / OPS", options: [
-                                            { value: "System Demo", label: "System Demo" },
-                                            { value: "IT Support Session", label: "IT Support Session" },
-                                            { value: "System Maintenance Meeting", label: "System Maintenance Meeting" },
-                                            { value: "Incident Review", label: "Incident Review" },
-                                            { value: "Dev Sprint Planning", label: "Dev Sprint Planning" },
-                                            { value: "Retrospective", label: "Retrospective" },
-                                        ]},
-                                        { label: "EVENTS / OTHERS", options: [
-                                            { value: "Company Announcement", label: "Company Announcement" },
-                                            { value: "Town Hall Meeting", label: "Town Hall Meeting" },
-                                            { value: "General Assembly", label: "General Assembly" },
-                                            { value: "Brainstorming Session", label: "Brainstorming Session" },
-                                            { value: "Networking", label: "Networking" },
-                                            { value: "Other", label: "Other" },
-                                        ]},
+                                        {
+                                            label: "CORE OFFICE EVENTS",
+                                            options: [
+                                                {
+                                                    value: "Meeting",
+                                                    label: "Meeting",
+                                                },
+                                                {
+                                                    value: "Team Meeting",
+                                                    label: "Team Meeting",
+                                                },
+                                                {
+                                                    value: "Department Meeting",
+                                                    label: "Department Meeting",
+                                                },
+                                                {
+                                                    value: "Management Meeting",
+                                                    label: "Management Meeting",
+                                                },
+                                                {
+                                                    value: "Client Meeting",
+                                                    label: "Client Meeting",
+                                                },
+                                                {
+                                                    value: "Board Meeting",
+                                                    label: "Board Meeting",
+                                                },
+                                                {
+                                                    value: "Corporate Meeting",
+                                                    label: "Corporate Meeting",
+                                                },
+                                            ],
+                                        },
+                                        {
+                                            label: "TRAINING / LEARNING",
+                                            options: [
+                                                {
+                                                    value: "Training",
+                                                    label: "Training",
+                                                },
+                                                {
+                                                    value: "Workshop",
+                                                    label: "Workshop",
+                                                },
+                                                {
+                                                    value: "Seminar",
+                                                    label: "Seminar",
+                                                },
+                                                {
+                                                    value: "Webinar",
+                                                    label: "Webinar",
+                                                },
+                                                {
+                                                    value: "Orientation",
+                                                    label: "Orientation",
+                                                },
+                                                {
+                                                    value: "Onboarding Session",
+                                                    label: "Onboarding Session",
+                                                },
+                                            ],
+                                        },
+                                        {
+                                            label: "BUSINESS EVENTS",
+                                            options: [
+                                                {
+                                                    value: "Presentation",
+                                                    label: "Presentation",
+                                                },
+                                                {
+                                                    value: "Project Kickoff",
+                                                    label: "Project Kickoff",
+                                                },
+                                                {
+                                                    value: "Project Review",
+                                                    label: "Project Review",
+                                                },
+                                                {
+                                                    value: "Strategy Planning",
+                                                    label: "Strategy Planning",
+                                                },
+                                                {
+                                                    value: "Budget Meeting",
+                                                    label: "Budget Meeting",
+                                                },
+                                                {
+                                                    value: "Quarterly Review",
+                                                    label: "Quarterly Review",
+                                                },
+                                            ],
+                                        },
+                                        {
+                                            label: "HR / ADMIN",
+                                            options: [
+                                                {
+                                                    value: "Interview",
+                                                    label: "Interview",
+                                                },
+                                                {
+                                                    value: "Performance Review",
+                                                    label: "Performance Review",
+                                                },
+                                                {
+                                                    value: "Disciplinary Meeting",
+                                                    label: "Disciplinary Meeting",
+                                                },
+                                                {
+                                                    value: "Policy Discussion",
+                                                    label: "Policy Discussion",
+                                                },
+                                            ],
+                                        },
+                                        {
+                                            label: "TECH / OPS",
+                                            options: [
+                                                {
+                                                    value: "System Demo",
+                                                    label: "System Demo",
+                                                },
+                                                {
+                                                    value: "IT Support Session",
+                                                    label: "IT Support Session",
+                                                },
+                                                {
+                                                    value: "System Maintenance Meeting",
+                                                    label: "System Maintenance Meeting",
+                                                },
+                                                {
+                                                    value: "Incident Review",
+                                                    label: "Incident Review",
+                                                },
+                                                {
+                                                    value: "Dev Sprint Planning",
+                                                    label: "Dev Sprint Planning",
+                                                },
+                                                {
+                                                    value: "Retrospective",
+                                                    label: "Retrospective",
+                                                },
+                                            ],
+                                        },
+                                        {
+                                            label: "EVENTS / OTHERS",
+                                            options: [
+                                                {
+                                                    value: "Company Announcement",
+                                                    label: "Company Announcement",
+                                                },
+                                                {
+                                                    value: "Town Hall Meeting",
+                                                    label: "Town Hall Meeting",
+                                                },
+                                                {
+                                                    value: "General Assembly",
+                                                    label: "General Assembly",
+                                                },
+                                                {
+                                                    value: "Brainstorming Session",
+                                                    label: "Brainstorming Session",
+                                                },
+                                                {
+                                                    value: "Networking",
+                                                    label: "Networking",
+                                                },
+                                                {
+                                                    value: "Other",
+                                                    label: "Other",
+                                                },
+                                            ],
+                                        },
                                     ]}
                                 />
                             </div>
 
-                            {/* ✅ ROOM — shows selected room name, still editable */}
-                            <select
-                                value={roomId}
-                                onChange={(e) => setRoomId(e.target.value)}
-                                className="border-gray-300 p-2 w-full rounded-md"
-                            >
-                                {rooms.map((room) => (
-                                    <option key={room.id} value={room.id}>{room.name}</option>
-                                ))}
-                            </select>
+                            <div>
+                                <label className="text-sm font-medium">
+                                    Room
+                                </label>
+                                <select
+                                    value={roomId}
+                                    onChange={(e) => setRoomId(e.target.value)}
+                                    className={`border p-2 w-full rounded-md ${liveValidation.hasConflict ? "border-red-400 bg-red-50" : "border-gray-300"}`}
+                                >
+                                    {rooms.map((room) => (
+                                        <option key={room.id} value={room.id}>
+                                            {room.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
 
                             <div className="grid grid-cols-1 gap-3">
                                 <div>
-                                    <label>Start:</label>
+                                    <label className="text-sm font-medium">
+                                        Start:
+                                    </label>
                                     <input
                                         type="datetime-local"
                                         value={startTime}
-                                        min={moment().format("YYYY-MM-DDTHH:mm")}
-                                        onChange={(e) => setStartTime(e.target.value)}
-                                        className="border-gray-300 p-2 w-full rounded-md"
+                                        min={moment().format(
+                                            "YYYY-MM-DDTHH:mm",
+                                        )}
+                                        onChange={(e) =>
+                                            setStartTime(e.target.value)
+                                        }
+                                        className={`border p-2 w-full rounded-md ${liveValidation.hasConflict ? "border-red-400 bg-red-50" : "border-gray-300"}`}
                                     />
                                 </div>
                                 <div>
-                                    <label>End:</label>
+                                    <label className="text-sm font-medium">
+                                        End:
+                                    </label>
                                     <input
                                         type="datetime-local"
                                         value={endTime}
-                                        min={moment().format("YYYY-MM-DDTHH:mm")}
-                                        onChange={(e) => setEndTime(e.target.value)}
-                                        className="border-gray-300 p-2 w-full rounded-md"
+                                        min={moment().format(
+                                            "YYYY-MM-DDTHH:mm",
+                                        )}
+                                        onChange={(e) =>
+                                            setEndTime(e.target.value)
+                                        }
+                                        className={`border p-2 w-full rounded-md ${liveValidation.hasConflict ? "border-red-400 bg-red-50" : "border-gray-300"}`}
                                     />
                                 </div>
                             </div>
+
+                            {/* Real-time validation feedback */}
+                            {liveValidation.hasConflict && (
+                                <div className="bg-red-50 border border-red-300 text-red-700 text-sm p-3 rounded-lg flex gap-2 items-start">
+                                    <i className="fa-solid fa-triangle-exclamation mt-1"></i>
+                                    <span className="font-medium">
+                                        {liveValidation.message}
+                                    </span>
+                                </div>
+                            )}
+                            {!liveValidation.hasConflict &&
+                                startTime &&
+                                endTime && (
+                                    <div className="bg-green-50 border border-green-200 text-green-700 text-sm p-2 rounded-lg flex gap-2 items-center">
+                                        <i className="fa-solid fa-circle-check"></i>
+                                        <span>
+                                            This time slot is available.
+                                        </span>
+                                    </div>
+                                )}
 
                             <div>
                                 <label>Recipient:</label>
@@ -749,12 +1398,14 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                                     style={{ width: "100%" }}
                                     value={attendees}
                                     onChange={(value) => setAttendees(value)}
-                                    options={(empEmail || []).map((email) => ({ value: email, label: email }))}
+                                    options={(empEmail || []).map((email) => ({
+                                        value: email,
+                                        label: email,
+                                    }))}
                                     className="border-gray-300 p-2"
                                 />
                             </div>
 
-                            {/* ✅ RECURRING TOGGLE */}
                             <div className="flex items-center gap-2">
                                 <input
                                     type="checkbox"
@@ -762,24 +1413,33 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                                     checked={isRecurring}
                                     onChange={(e) => {
                                         setIsRecurring(e.target.checked);
-                                        if (!e.target.checked) setRecurringDays([]);
+                                        if (!e.target.checked)
+                                            setRecurringDays([]);
                                     }}
                                 />
                                 <label htmlFor="isRecurring">Recurring</label>
                             </div>
 
-                            {/* ✅ DAY PICKER — only shows when recurring is checked */}
                             {isRecurring && (
                                 <div className="p-3 border rounded-lg bg-blue-50 space-y-2">
-                                    <p className="text-sm font-semibold text-blue-600">Repeat on these days:</p>
+                                    <p className="text-sm font-semibold text-blue-600">
+                                        Repeat on these days:
+                                    </p>
                                     <div className="flex gap-2 flex-wrap">
                                         {DAY_OPTIONS.map((day) => {
-                                            const selected = recurringDays.includes(day.value);
+                                            const selected =
+                                                recurringDays.includes(
+                                                    day.value,
+                                                );
                                             return (
                                                 <button
                                                     key={day.value}
                                                     type="button"
-                                                    onClick={() => toggleRecurringDay(day.value)}
+                                                    onClick={() =>
+                                                        toggleRecurringDay(
+                                                            day.value,
+                                                        )
+                                                    }
                                                     className={`px-3 py-1 rounded-full text-sm font-medium border transition ${
                                                         selected
                                                             ? "bg-teal-500 text-white border-teal-500"
@@ -792,17 +1452,28 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                                         })}
                                     </div>
                                     <div>
-                                        <label className="text-xs font-semibold text-blue-600">Repeat Until:</label>
+                                        <label className="text-xs font-semibold text-blue-600">
+                                            Repeat Until:
+                                        </label>
                                         <input
                                             type="date"
                                             value={recurringUntil}
-                                            min={moment(startTime).format("YYYY-MM-DD")}
-                                            onChange={(e) => setRecurringUntil(e.target.value)}
-                                            className="border p-2 w-full rounded-md text-sm mt-1"
+                                            min={moment(startTime).format(
+                                                "YYYY-MM-DD",
+                                            )}
+                                            onChange={(e) =>
+                                                setRecurringUntil(
+                                                    e.target.value,
+                                                )
+                                            }
+                                            className={`border p-2 w-full rounded-md text-sm mt-1 ${liveValidation.hasConflict ? "border-red-400" : ""}`}
                                         />
                                     </div>
                                     <p className="text-xs text-gray-500">
-                                        ℹ️ The time of day comes from Start/End time above. This field sets how far into the future the recurring booking goes.
+                                        The time of day is based on the Start
+                                        and End times above. This field
+                                        determines how far into the future the
+                                        recurring reservation will repeat.
                                     </p>
                                 </div>
                             )}
@@ -816,14 +1487,38 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
 
                             <div className="flex gap-2">
                                 <Button
-                                    onClick={() => setShowConfirmSave(true)}
-                                    disabled={isSaving}
-                                    className="bg-teal-500 text-white hover:bg-teal-600 disabled:opacity-60"
+                                    onClick={() => {
+                                        if (liveValidation.hasConflict) {
+                                            alert(liveValidation.message);
+                                            return;
+                                        }
+                                        setShowConfirmSave(true);
+                                    }}
+                                    disabled={
+                                        isSaving || liveValidation.hasConflict
+                                    }
+                                    className={`flex-1 text-white ${liveValidation.hasConflict || isSaving ? "bg-gray-400 cursor-not-allowed" : "bg-teal-500 hover:bg-teal-600"} disabled:opacity-60`}
+                                    title={
+                                        liveValidation.hasConflict
+                                            ? liveValidation.message
+                                            : "Save reservation"
+                                    }
                                 >
                                     {isSaving ? (
-                                        <><i className="fa-solid fa-spinner fa-spin mr-2"></i>Saving...</>
+                                        <>
+                                            <i className="fa-solid fa-spinner fa-spin mr-2"></i>
+                                            Saving...
+                                        </>
+                                    ) : liveValidation.hasConflict ? (
+                                        <>
+                                            <i className="fa-solid fa-ban mr-2"></i>
+                                            Conflict Detected
+                                        </>
                                     ) : (
-                                        <><i className="fa-solid fa-floppy-disk mr-2"></i>Save</>
+                                        <>
+                                            <i className="fa-solid fa-floppy-disk mr-2"></i>
+                                            Save
+                                        </>
                                     )}
                                 </Button>
                                 <Button
@@ -832,163 +1527,415 @@ export default function Dashboard({ rooms, reservations, emp_data, empEmail }) {
                                     disabled={isSaving}
                                     className="bg-red-500 text-white hover:bg-red-600 disabled:opacity-60"
                                 >
-                                    <i className="fa-solid fa-xmark mr-2"></i>Cancel
+                                    <i className="fa-solid fa-xmark mr-2"></i>
+                                    Cancel
                                 </Button>
                             </div>
+                            {liveValidation.hasConflict && (
+                                <p className="text-xs text-red-500 text-center">
+                                    Please resolve the scheduling conflict
+                                    before saving.
+                                </p>
+                            )}
                         </div>
                     </Dialog>
                 )}
 
-                {/* MANAGE RESERVATION MODAL */}
+                {/* MANAGE RESERVATION MODAL WITH REAL-TIME VALIDATION FOR RESCHEDULING */}
                 {selectedEvent && (
-                    <Dialog open={true} onOpenChange={() => setSelectedEvent(null)}>
+                    <Dialog
+                        open={true}
+                        onOpenChange={() => {
+                            setSelectedEvent(null);
+                            setActionType("");
+                            setNewRoom(null);
+                            setNewStart("");
+                            setNewEnd("");
+                        }}
+                    >
                         <div className="w-full max-w-md space-y-5 p-2">
                             <div className="border-b pb-3">
                                 <h2 className="text-lg font-bold text-teal-600 flex items-center gap-2">
-                                    <i className="fa-solid fa-calendar-check"></i>Manage Reservation
+                                    <i className="fa-solid fa-calendar-check"></i>
+                                    Manage Reservation
                                 </h2>
-                                <p className="text-sm text-gray-500 mt-1">Review or modify this booking</p>
+                                <p className="text-sm text-gray-500 mt-1">
+                                    Review or modify this booking
+                                </p>
                             </div>
 
                             <div className="bg-gray-50 border rounded-lg p-3 space-y-1">
-                                <p className="font-semibold text-gray-800">{selectedEvent.title}</p>
+                                <p className="font-semibold text-gray-800">
+                                    {selectedEvent.title}
+                                </p>
                                 <p className="text-xs text-gray-500">
-                                    {moment(selectedEvent.start).format("MMM DD, YYYY • hh:mm A")} -{" "}
-                                    {moment(selectedEvent.end).format("hh:mm A")}
+                                    {moment(selectedEvent.start).format(
+                                        "MMM DD, YYYY • hh:mm A",
+                                    )}{" "}
+                                    -{" "}
+                                    {moment(selectedEvent.end).format(
+                                        "hh:mm A",
+                                    )}
                                 </p>
                             </div>
 
                             <div>
-                                <label className="text-sm font-medium text-gray-600">Action</label>
+                                <label className="text-sm font-medium text-gray-600">
+                                    Action
+                                </label>
                                 <Select
                                     style={{ width: "100%" }}
-                                    placeholder="Choose what to do"
+                                    placeholder="Choose an action"
                                     value={actionType}
                                     onChange={(value) => setActionType(value)}
                                     options={[
-                                        { value: "resched", label: "🔁 Reschedule Reservation" },
-                                        { value: "cancel", label: "❌ Cancel Reservation" },
+                                        {
+                                            value: "resched",
+                                            label: "Reschedule Reservation",
+                                        },
+                                        {
+                                            value: "cancel",
+                                            label: "Cancel Reservation",
+                                        },
                                     ]}
                                 />
                             </div>
 
                             {actionType === "resched" && (
                                 <div className="space-y-3 p-3 border rounded-lg bg-blue-50">
-                                    <p className="text-sm font-semibold text-blue-600">New Schedule</p>
+                                    <p className="text-sm font-semibold text-blue-600">
+                                        New Schedule
+                                    </p>
                                     <div>
-                                        <label className="text-sm font-medium text-gray-600">Select Room</label>
+                                        <label className="text-sm font-medium text-gray-600">
+                                            Select Room
+                                        </label>
                                         <Select
                                             style={{ width: "100%" }}
-                                            placeholder="Choose room"
+                                            placeholder="Choose a room"
                                             value={newRoom}
-                                            onChange={(value) => setNewRoom(value)}
-                                            options={rooms.map((room) => ({ value: room.id, label: room.name }))}
+                                            onChange={(value) =>
+                                                setNewRoom(value)
+                                            }
+                                            options={rooms.map((room) => ({
+                                                value: room.id,
+                                                label: room.name,
+                                            }))}
+                                            status={
+                                                rescheduleValidation.hasConflict
+                                                    ? "error"
+                                                    : ""
+                                            }
                                         />
                                     </div>
-                                    <input type="datetime-local" value={newStart} onChange={(e) => setNewStart(e.target.value)} className="border p-2 w-full rounded-md focus:ring-2 focus:ring-blue-400" />
-                                    <input type="datetime-local" value={newEnd} onChange={(e) => setNewEnd(e.target.value)} className="border p-2 w-full rounded-md focus:ring-2 focus:ring-blue-400" />
-                                    <p className="text-xs text-gray-500">⚠️ Make sure selected time slot is available</p>
+                                    <div>
+                                        <label className="text-xs font-medium text-gray-600">
+                                            New Start Time
+                                        </label>
+                                        <input
+                                            type="datetime-local"
+                                            value={newStart}
+                                            onChange={(e) =>
+                                                setNewStart(e.target.value)
+                                            }
+                                            className={`border p-2 w-full rounded-md focus:ring-2 focus:ring-blue-400 mt-1 ${rescheduleValidation.hasConflict ? "border-red-400 bg-red-50" : ""}`}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-gray-600">
+                                            New End Time
+                                        </label>
+                                        <input
+                                            type="datetime-local"
+                                            value={newEnd}
+                                            onChange={(e) =>
+                                                setNewEnd(e.target.value)
+                                            }
+                                            className={`border p-2 w-full rounded-md focus:ring-2 focus:ring-blue-400 mt-1 ${rescheduleValidation.hasConflict ? "border-red-400 bg-red-50" : ""}`}
+                                        />
+                                    </div>
+
+                                    {/* Real-time validation for rescheduling */}
+                                    {rescheduleValidation.hasConflict && (
+                                        <div className="bg-red-50 border border-red-300 text-red-700 text-sm p-3 rounded-lg flex gap-2 items-start">
+                                            <i className="fa-solid fa-triangle-exclamation mt-1"></i>
+                                            <span className="font-medium">
+                                                {rescheduleValidation.message}
+                                            </span>
+                                        </div>
+                                    )}
+                                    {!rescheduleValidation.hasConflict &&
+                                        newStart &&
+                                        newEnd &&
+                                        newRoom && (
+                                            <div className="bg-green-50 border border-green-200 text-green-700 text-sm p-2 rounded-lg flex gap-2 items-center">
+                                                <i className="fa-solid fa-circle-check"></i>
+                                                <span>
+                                                    This time slot is available
+                                                    for rescheduling.
+                                                </span>
+                                            </div>
+                                        )}
+                                    {!rescheduleValidation.hasConflict && (
+                                        <p className="text-xs text-gray-500">
+                                            The system will automatically
+                                            prevent overlapping bookings.
+                                        </p>
+                                    )}
                                 </div>
                             )}
 
                             {actionType === "cancel" && (
                                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg space-y-3">
-                                    <p className="text-sm text-red-600 font-medium">⚠️ This reservation will be canceled permanently.</p>
+                                    <p className="text-sm text-red-600 font-medium">
+                                        This reservation will be canceled
+                                        permanently. Please provide a reason.
+                                    </p>
                                     <textarea
                                         placeholder="Enter reason for cancellation..."
                                         value={cancelReason}
-                                        onChange={(e) => setCancelReason(e.target.value.replace(/^\s+/, ""))}
+                                        onChange={(e) =>
+                                            setCancelReason(
+                                                e.target.value.replace(
+                                                    /^\s+/,
+                                                    "",
+                                                ),
+                                            )
+                                        }
                                         className="w-full border p-2 rounded-md text-sm"
                                     />
                                 </div>
                             )}
 
                             <div className="flex gap-2 pt-2">
-                                {actionType !== "cancel" || cancelReason.trim().length > 0 ? (
+                                {actionType !== "cancel" ||
+                                cancelReason.trim().length > 0 ? (
                                     <Button
-                                        className={`w-full text-white ${actionType === "cancel" ? "bg-red-500 hover:bg-red-600" : "bg-teal-500 hover:bg-teal-600"}`}
-                                        disabled={!actionType || (actionType === "resched" && (!newRoom || !newStart || !newEnd))}
+                                        className={`w-full text-white ${actionType === "cancel" ? "bg-red-500 hover:bg-red-600" : rescheduleValidation.hasConflict ? "bg-gray-400 cursor-not-allowed" : "bg-teal-500 hover:bg-teal-600"}`}
+                                        disabled={
+                                            !actionType ||
+                                            (actionType === "resched" &&
+                                                (!newRoom ||
+                                                    !newStart ||
+                                                    !newEnd ||
+                                                    rescheduleValidation.hasConflict)) ||
+                                            (actionType === "cancel" &&
+                                                !cancelReason.trim())
+                                        }
+                                        title={
+                                            rescheduleValidation.hasConflict
+                                                ? rescheduleValidation.message
+                                                : ""
+                                        }
                                         onClick={async () => {
-                                            if (!isOwnerOrAdmin(selectedEvent)) { alert("❌ Unauthorized action."); return; }
+                                            if (
+                                                !isOwnerOrAdmin(selectedEvent)
+                                            ) {
+                                                alert(
+                                                    "You are not authorized to perform this action.",
+                                                );
+                                                return;
+                                            }
 
                                             if (actionType === "cancel") {
-                                                await axios.delete("/reservation-delete", { data: { id: selectedEvent.id, reason: cancelReason.trim() } });
+                                                await axios.delete(
+                                                    "/reservation-delete",
+                                                    {
+                                                        data: {
+                                                            id: selectedEvent.id,
+                                                            reason: cancelReason.trim(),
+                                                        },
+                                                    },
+                                                );
                                             }
 
                                             if (actionType === "resched") {
-                                                const start = new Date(newStart);
-                                                const end = new Date(newEnd);
-                                                const conflict = events.some(
-                                                    (e) => e.room_id === (newRoom || selectedEvent.room_id) && e.id !== selectedEvent.id && start < e.end && end > e.start,
+                                                if (
+                                                    rescheduleValidation.hasConflict
+                                                ) {
+                                                    alert(
+                                                        rescheduleValidation.message,
+                                                    );
+                                                    return;
+                                                }
+                                                const start = new Date(
+                                                    newStart,
                                                 );
-                                                if (conflict) { alert("❌ Selected time is not available"); return; }
-                                                await axios.post("/reservation-update", {
-                                                    id: selectedEvent.id,
-                                                    room_id: newRoom,
-                                                    start_date: moment(start).format("YYYY-MM-DD"),
-                                                    start_time: moment(start).format("HH:mm:ss"),
-                                                    end_date: moment(end).format("YYYY-MM-DD"),
-                                                    end_time: moment(end).format("HH:mm:ss"),
-                                                });
+                                                const end = new Date(newEnd);
+                                                // Final safeguard check before submitting
+                                                const conflict = events.some(
+                                                    (e) =>
+                                                        Number(e.room_id) ===
+                                                            Number(
+                                                                newRoom ||
+                                                                    selectedEvent.room_id,
+                                                            ) &&
+                                                        Number(e.id) !==
+                                                            Number(
+                                                                selectedEvent.id,
+                                                            ) &&
+                                                        start < e.end &&
+                                                        end > e.start,
+                                                );
+                                                if (conflict) {
+                                                    alert(
+                                                        "The selected time slot is not available. Please choose a different room or time.",
+                                                    );
+                                                    return;
+                                                }
+                                                await axios.post(
+                                                    "/reservation-update",
+                                                    {
+                                                        id: selectedEvent.id,
+                                                        room_id: newRoom,
+                                                        start_date:
+                                                            moment(
+                                                                start,
+                                                            ).format(
+                                                                "YYYY-MM-DD",
+                                                            ),
+                                                        start_time:
+                                                            moment(
+                                                                start,
+                                                            ).format(
+                                                                "HH:mm:ss",
+                                                            ),
+                                                        end_date:
+                                                            moment(end).format(
+                                                                "YYYY-MM-DD",
+                                                            ),
+                                                        end_time:
+                                                            moment(end).format(
+                                                                "HH:mm:ss",
+                                                            ),
+                                                    },
+                                                );
                                             }
 
-// ✅ FIX: partial reload instead of full rebuild (faster after cancel)
-                                        // Also reset modal state since router.reload does NOT unmount the component
+                                            setSelectedEvent(null);
+                                            setActionType("");
+                                            setCancelReason("");
+                                            setNewRoom(null);
+                                            setNewStart("");
+                                            setNewEnd("");
+                                            router.reload({
+                                                only: ["rooms", "reservations"],
+                                            });
+                                        }}
+                                    >
+                                        {actionType === "cancel"
+                                            ? "Yes, Cancel Reservation"
+                                            : rescheduleValidation.hasConflict
+                                              ? "Conflict Detected"
+                                              : "Confirm Changes"}
+                                    </Button>
+                                ) : null}
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
                                         setSelectedEvent(null);
                                         setActionType("");
-                                        setCancelReason("");
                                         setNewRoom(null);
                                         setNewStart("");
                                         setNewEnd("");
-                                        router.reload({ only: ["rooms", "reservations"] });
-                                        }}
-                                    >
-                                        {actionType === "cancel" ? "yes, Cancel Reservation" : "Confirm Changes"}
-                                    </Button>
-                                ) : null}
-                                <Button variant="outline" onClick={() => setSelectedEvent(null)}>Close</Button>
+                                    }}
+                                >
+                                    Close
+                                </Button>
                             </div>
+                            {actionType === "resched" &&
+                                rescheduleValidation.hasConflict && (
+                                    <p className="text-xs text-red-500 text-center">
+                                        Please resolve the scheduling conflict
+                                        before confirming.
+                                    </p>
+                                )}
                         </div>
                     </Dialog>
                 )}
 
-                {/* CONFIRM SAVE MODAL */}
                 {showConfirmSave && (
-                    <Dialog open={true} onOpenChange={() => setShowConfirmSave(false)}>
+                    <Dialog
+                        open={true}
+                        onOpenChange={() => setShowConfirmSave(false)}
+                    >
                         <div className="w-full max-w-lg p-4 space-y-4">
-                            <h2 className="text-lg font-bold text-teal-600">📌 Confirm Reservation</h2>
-                            <p className="text-sm text-gray-600">Please review and agree to the meeting etiquette before saving.</p>
+                            <h2 className="text-lg font-bold text-teal-600">
+                                Confirm Reservation
+                            </h2>
+                            {/* Display conflict again to prevent submission */}
+                            {liveValidation.hasConflict && (
+                                <div className="bg-red-50 border border-red-300 text-red-700 text-sm p-3 rounded-lg">
+                                    <i className="fa-solid fa-triangle-exclamation mr-2"></i>
+                                    {liveValidation.message}
+                                </div>
+                            )}
+                            <p className="text-sm text-gray-600">
+                                Please review and agree to the meeting etiquette
+                                before saving.
+                            </p>
                             <ol className="list-decimal pl-5 space-y-2 text-sm text-gray-700">
-                                <li>⏰ Be on time</li>
-                                <li>🎯 Be prepared</li>
-                                <li>🤝 Respect others' time</li>
-                                <li>🔇 Keep devices on silent</li>
-                                <li>📍 Use assigned room only</li>
-                                <li>👥 Invite necessary participants only</li>
-                                <li>📝 Stay on topic</li>
-                                <li>📩 Cancel if not needed</li>
-                                <li>🧼 Maintain cleanliness</li>
-                                <li>⚠️ Follow company policies</li>
+                                <li>Be on time</li>
+                                <li>Be prepared</li>
+                                <li>Respect others' time</li>
+                                <li>Keep devices on silent</li>
+                                <li>Use the assigned room only</li>
+                                <li>Invite only necessary participants</li>
+                                <li>Stay on topic</li>
+                                <li>Cancel if not needed</li>
+                                <li>Maintain cleanliness</li>
+                                <li>Follow company policies</li>
                             </ol>
                             <label className="flex items-start gap-2">
-                                <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
-                                <span className="text-sm">I agree to the Meeting Etiquette and Guidelines</span>
+                                <input
+                                    type="checkbox"
+                                    checked={agreed}
+                                    onChange={(e) =>
+                                        setAgreed(e.target.checked)
+                                    }
+                                />
+                                <span className="text-sm">
+                                    I agree to the Meeting Etiquette and
+                                    Guidelines
+                                </span>
                             </label>
                             <div className="flex gap-2 pt-3">
                                 {agreed ? (
                                     <Button
                                         onClick={handleSave}
-                                        disabled={!agreed || isSaving}
-                                        className={`w-full text-white ${!agreed || isSaving ? "bg-gray-400 cursor-not-allowed" : "bg-teal-500 hover:bg-teal-600"}`}
+                                        disabled={
+                                            !agreed ||
+                                            isSaving ||
+                                            liveValidation.hasConflict
+                                        }
+                                        className={`w-full text-white ${!agreed || isSaving || liveValidation.hasConflict ? "bg-gray-400 cursor-not-allowed" : "bg-teal-500 hover:bg-teal-600"}`}
                                     >
                                         {isSaving ? (
-                                            <><i className="fa-solid fa-spinner fa-spin mr-2"></i>Saving...</>
+                                            <>
+                                                <i className="fa-solid fa-spinner fa-spin mr-2"></i>
+                                                Saving...
+                                            </>
+                                        ) : liveValidation.hasConflict ? (
+                                            <>
+                                                <i className="fa-solid fa-ban mr-2"></i>
+                                                Conflict Detected - Please
+                                                Resolve First
+                                            </>
                                         ) : (
-                                            <><i className="fa-solid fa-floppy-disk mr-2"></i>confirm & Save</>
+                                            <>
+                                                <i className="fa-solid fa-floppy-disk mr-2"></i>
+                                                Confirm & Save
+                                            </>
                                         )}
                                     </Button>
                                 ) : null}
-                                <Button variant="outline" onClick={() => setShowConfirmSave(false)} className="bg-red-500 text-white hover:bg-red-600">Cancel</Button>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setShowConfirmSave(false)}
+                                    className="bg-red-500 text-white hover:bg-red-600"
+                                >
+                                    Cancel
+                                </Button>
                             </div>
                         </div>
                     </Dialog>
